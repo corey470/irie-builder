@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Built different. Worn proud. Premium streetwear for those who move with intention.">
+  <meta property="og:title" content="Your Brand | Premium Streetwear">
+  <meta property="og:description" content="Built different. Worn proud. Premium streetwear for those who move with intention.">
+  <meta property="og:image" content="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80">
+  <title>Your Brand | Premium Streetwear</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* CREATIVE DECISIONS
+    Typography: Space Mono (display) + Inter (body)
+    Motion vocabulary: fade-up, fade, slide-left, scale-up, line-reveal, split
+    Color temperature: cool/neutral
+    Section order: hero, marquee, features, brand story, atmosphere, email capture, footer
+    Atmosphere: grain, orbs, gradients
+    */
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #fff;
+      background: #0A0A0A;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Grain overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/><feColorMatrix in="noise" type="saturate" values="0"/></filter><rect width="400" height="400" fill="%23000" filter="url(%23noise)" opacity="0.03"/></svg>');
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Floating orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.06;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb-1 {
+      width: 300px;
+      height: 300px;
+      background: #E8C547;
+      top: 10%;
+      left: 5%;
+      animation: drift 90s infinite ease-in-out;
+    }
+
+    .orb-2 {
+      width: 200px;
+      height: 200px;
+      background: #E8C547;
+      bottom: 20%;
+      right: 10%;
+      animation: drift 75s infinite ease-in-out reverse;
+    }
+
+    @keyframes drift {
+      0%, 100% { transform: translate(0, 0); }
+      50% { transform: translate(40px, -60px); }
+    }
+
+    /* Custom cursor */
+    .cursor {
+      position: fixed;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #E8C547;
+      pointer-events: none;
+      z-index: 9999;
+      transition: transform 0.1s;
+    }
+
+    .cursor-ring {
+      position: fixed;
+      width: 36px;
+      height: 36px;
+      border: 1.5px solid #E8C547;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9998;
+      transition: transform 0.15s ease-out, opacity 0.15s;
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      padding: 24px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 2000;
+      background: transparent;
+      backdrop-filter: blur(0px);
+      transition: all 0.4s ease;
+    }
+
+    nav.scrolled {
+      background: rgba(10, 10, 10, 0.95);
+      backdrop-filter: blur(10px);
+    }
+
+    .nav-logo {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(16px, 2vw, 20px);
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 13px;
+      text-decoration: none;
+      color: #fff;
+      opacity: 0.7;
+      transition: opacity 0.3s;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
+    }
+
+    .nav-links a:hover {
+      opacity: 1;
+    }
+
+    @media (max-width: 768px) {
+      nav {
+        padding: 16px 20px;
+      }
+      .nav-links {
+        display: none;
+      }
+    }
+
+    /* Hero section */
+    section {
+      position: relative;
+      z-index: 10;
+    }
+
+    .hero {
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(10,10,10,0.3) 0%, rgba(10,10,10,0.6) 100%), url('https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80');
+      background-size: cover;
+      background-position: center;
+      background-attachment: fixed;
+      overflow: hidden;
+      text-align: center;
+    }
+
+    .hero-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80');
+      background-size: cover;
+      background-position: center;
+      transform: translate3d(0, 0, 0);
+      z-index: -1;
+    }
+
+    .hero-content {
+      max-width: 800px;
+      z-index: 20;
+      opacity: 1;
+    }
+
+    .hero h1 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(48px, 8vw, 120px);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -2px;
+      margin-bottom: 16px;
+      color: #fff;
+    }
+
+    .hero-tagline {
+      font-size: clamp(16px, 3vw, 24px);
+      font-weight: 300;
+      color: #E8C547;
+      margin-bottom: 40px;
+      letter-spacing: 0.5px;
+    }
+
+    .hero-cta {
+      display: inline-flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .btn {
+      padding: 16px 48px;
+      background: #E8C547;
+      color: #0A0A0A;
+      border: none;
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border-radius: 0;
+      min-height: 48px;
+    }
+
+    .btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 10px 40px rgba(232, 197, 71, 0.3);
+    }
+
+    .email-form {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .email-form input {
+      flex: 1;
+      padding: 14px 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(232, 197, 71, 0.3);
+      color: #fff;
+      font-size: 13px;
+      backdrop-filter: blur(10px);
+      border-radius: 0;
+    }
+
+    .email-form input::placeholder {
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .email-form input:focus {
+      outline: none;
+      border-color: #E8C547;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .email-form button {
+      padding: 14px 24px;
+      background: #E8C547;
+      color: #0A0A0A;
+      border: none;
+      font-weight: 700;
+      font-family: 'Space Mono', monospace;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 12px;
+      letter-spacing: 1px;
+    }
+
+    .email-form button:hover {
+      transform: scale(1.02);
+    }
+
+    /* Marquee */
+    .marquee-section {
+      overflow: hidden;
+      background: #0A0A0A;
+      padding: 40px 0;
+      border-top: 1px solid rgba(232, 197, 71, 0.2);
+      border-bottom: 1px solid rgba(232, 197, 71, 0.2);
+    }
+
+    .marquee {
+      display: flex;
+      white-space: nowrap;
+      animation: scroll 30s linear infinite;
+    }
+
+    .marquee-item {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(14px, 2vw, 18px);
+      margin-right: 60px;
+      color: #E8C547;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    @keyframes scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    /* Features section */
+    .features {
+      padding: 120px 40px;
+      background: #0A0A0A;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      text-align: center;
+      opacity: 0;
+    }
+
+    .feature-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #E8C547, rgba(232, 197, 71, 0.6));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      color: #0A0A0A;
+    }
+
+    .feature-card h3 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(16px, 2vw, 20px);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Brand story */
+    .brand-story {
+      padding: 120px 40px;
+      background: #0A0A0A;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .story-image {
+      width: 100%;
+      aspect-ratio: 1;
+      background: linear-gradient(135deg, rgba(232, 197, 71, 0.1), rgba(232, 197, 71, 0.05));
+      border: 1px solid rgba(232, 197, 71, 0.2);
+      opacity: 0;
+    }
+
+    .story-content {
+      opacity: 0;
+    }
+
+    .story-content h2 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(32px, 5vw, 56px);
+      margin-bottom: 32px;
+      text-transform: uppercase;
+      letter-spacing: -1px;
+      line-height: 1.1;
+    }
+
+    .story-content p {
+      font-size: 16px;
+      line-height: 1.8;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .brand-story {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+    }
+
+    /* Atmosphere section */
+    .atmosphere {
+      position: relative;
+      height: 500px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.6)), url('https://images.unsplash.com/photo-1556228578-8c89e6adf883?auto=format&fit=crop&w=1920&q=80');
+      background-size: cover;
+      background-position: center;
+      overflow: hidden;
+    }
+
+    .atmosphere-content {
+      text-align: center;
+      z-index: 20;
+      opacity: 0;
+      max-width: 600px;
+      padding: 40px;
+    }
+
+    .atmosphere-content h2 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(36px, 5vw, 60px);
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: -1px;
+    }
+
+    .atmosphere-content p {
+      font-size: 18px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* Email capture */
+    .email-capture {
+      padding: 120px 40px;
+      background: linear-gradient(135deg, rgba(232, 197, 71, 0.1), rgba(232, 197, 71, 0.05));
+      text-align: center;
+      border-top: 1px solid rgba(232, 197, 71, 0.2);
+    }
+
+    .email-capture h2 {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(32px, 5vw, 48px);
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: -1px;
+    }
+
+    .email-capture p {
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 40px;
+    }
+
+    .email-capture-form {
+      display: flex;
+      max-width: 500px;
+      margin: 0 auto;
+      gap: 8px;
+    }
+
+    .email-capture-form input {
+      flex: 1;
+      padding: 16px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(232, 197, 71, 0.3);
+      color: #fff;
+      font-size: 14px;
+      backdrop-filter: blur(10px);
+    }
+
+    .email-capture-form input:focus {
+      outline: none;
+      border-color: #E8C547;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .email-capture-form button {
+      padding: 16px 40px;
+      background: #E8C547;
+      color: #0A0A0A;
+      border: none;
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 13px;
+    }
+
+    .email-capture-form button:hover {
+      transform: scale(1.02);
+      box-shadow: 0 10px 40px rgba(232, 197, 71, 0.3);
+    }
+
+    @media (max-width: 768px) {
+      .email-capture-form {
+        flex-direction: column;
+      }
+    }
+
+    /* Footer */
+    footer {
+      padding: 60px 40px;
+      background: #050505;
+      border-top: 1px solid rgba(232, 197, 71, 0.1);
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 60px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    footer h3 {
+      font-family: 'Space Mono', monospace;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+      color: #E8C547;
+    }
+
+    footer a {
+      display: block;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      text-decoration: none;
+      margin-bottom: 12px;
+      transition: color 0.3s;
+    }
+
+    footer a:hover {
+      color: #E8C547;
+    }
+
+    .footer-brand {
+      grid-column: 1;
+    }
+
+    .footer-brand p {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    .footer-bottom {
+      grid-column: 1 / -1;
+      padding-top: 40px;
+      border-top: 1px solid rgba(232, 197, 71, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-bottom p {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    @media (max-width: 768px) {
+      footer {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+      .footer-brand {
+        grid-column: auto;
+      }
+      .footer-bottom {
+        grid-column: auto;
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+    }
+
+    /* Animation classes */
+    [data-animate="fade-up"] {
+      opacity: 0;
+      transform: translateY(30px);
+    }
+
+    [data-animate="fade"] {
+      opacity: 0;
+    }
+
+    [data-animate="slide-left"] {
+      opacity: 0;
+      transform: translateX(40px);
+    }
+
+    [data-animate="scale-up"] {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    [data-animate="line-reveal"] {
+      position: relative;
+      overflow: hidden;
+    }
+
+    [data-animate="line-reveal"]::before {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: #E8C547;
+    }
+
+    [data-animate="split"] {
+      opacity: 0;
+    }
+
+    [data-animate].show {
+      opacity: 1;
+      transform: none;
+      animation: none;
+    }
+
+    [data-animate].show::before {
+      width: 100%;
+      transition: width 0.6s ease;
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
+      .orb {
+        display: none;
+      }
+      nav {
+        backdrop-filter: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-cta {
+        flex-direction: column;
+      }
+      .email-form {
+        flex-direction: column;
+      }
+      .hero h1 {
+        font-size: 36px;
+      }
+    }
+
+    @media (pointer: coarse) {
+      .cursor, .cursor-ring {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+
+  <nav>
+    <div class="nav-logo">Your Brand</div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#story">Story</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-bg" style="background-image: url('https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80');"></div>
+    <div class="hero-content" data-animate="fade-up">
+      <h1>Built different. Worn proud.</h1>
+      <p class="hero-tagline" data-animate="fade" data-delay="80">Premium streetwear for those who move with intention.</p>
+      <div class="hero-cta">
+        <button class="btn" data-animate="scale-up" data-delay="160">Shop the Drop</button>
+        <form class="email-form" data-animate="slide-left" data-delay="240">
+          <input type="email" placeholder="Enter your email" required>
+          <button type="submit">Join</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- Marquee Strip -->
+  <section class="marquee-section">
+    <div class="marquee">
+      <span class="marquee-item">Premium Quality</span>
+      <span class="marquee-item">Limited Drops</span>
+      <span class="marquee-item">Authentic Culture</span>
+      <span class="marquee-item">Community Driven</span>
+      <span class="marquee-item">Premium Quality</span>
+      <span class="marquee-item">Limited Drops</span>
+      <span class="marquee-item">Authentic Culture</span>
+      <span class="marquee-item">Community Driven</span>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="features-grid">
+      <div class="feature-card" data-animate="fade-up" data-delay="0">
+        <div class="feature-icon">▲</div>
+        <h3>Limited Drops</h3>
+        <p>Each collection is carefully curated and released in limited quantities to maintain exclusivity and cultural impact.</p>
+      </div>
+      <div class="feature-card" data-animate="fade-up" data-delay="80">
+        <div class="feature-icon">★</div>
+        <h3>Premium Materials</h3>
+        <p>We source the finest fabrics and materials, ensuring every piece feels as premium as it looks on first touch.</p>
+      </div>
+      <div class="feature-card" data-animate="fade-up" data-delay="160">
+        <div class="feature-icon">◆</div>
+        <h3>Culture First</h3>
+        <p>Built by the culture, for the culture. We collaborate with artists and creators who shape the streets.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Brand Story Section -->
+  <section class="brand-story" id="story">
+    <div class="story-image" data-animate="scale-up" data-delay="0"></div>
+    <div class="story-content" data-animate="slide-left" data-delay="80">
+      <h2>The Movement</h2>
+      <p>We make clothes for the culture. Every piece is a statement, every drop is an event. Built for the ones who know.</p>
+      <p>Your Brand isn't just clothing—it's a lifestyle choice. We represent intention, authenticity, and the uncompromising pursuit of excellence. When you wear our pieces, you're part of a community that refuses to settle for ordinary.</p>
+    </div>
+  </section>
+
+  <!-- Atmosphere Section -->
+  <section class="atmosphere">
+    <div class="atmosphere-content" data-animate="fade-up" data-delay="0">
+      <h2>The Drop is Everything</h2>
+      <p>When we release, the streets notice. Limited quantity, unlimited impact. This is where culture and commerce collide.</p>
+    </div>
+  </section>
+
+  <!-- Email Capture Section -->
+  <section class="email-capture">
+    <h2 data-animate="fade-up" data-delay="0">Stay in the Loop</h2>
+    <p data-animate="fade" data-delay="80">Get early access to drops, exclusive content, and insider updates.</p>
+    <form class="email-capture-form" data-animate="scale-up" data-delay="160">
+      <input type="email" placeholder="Your email" required>
+      <button type="submit">Shop the Drop</button>
+    </form>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-brand">
+      <h3>Your Brand</h3>
+      <p>Premium streetwear for those who move with intention. Built different. Worn proud.</p>
+    </div>
+    <div>
+      <h3>Shop</h3>
+      <a href="#shop">Latest Drops</a>
+      <a href="#shop">All Collections</a>
+      <a href="#shop">Lookbook</a>
+    </div>
+    <div>
+      <h3>Connect</h3>
+      <a href="#social">Instagram</a>
+      <a href="#social">Twitter</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2024 Your Brand. All rights reserved.</p>
+      <div>
+        <a href="#privacy" style="display: inline; margin-right: 20px;">Privacy</a>
+        <a href="#terms" style="display: inline;">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Custom cursor
+    if (matchMedia('(pointer:fine)').matches) {
+      const cursor = document.createElement('div');
+      cursor.classList.add('cursor');
+      const cursorRing = document.createElement('div');
+      cursorRing.classList.add('cursor-ring');
+      document.body.appendChild(cursor);
+      document.body.appendChild(cursorRing);
+
+      let mouseX = 0, mouseY = 0;
+      let ringX = 0, ringY = 0;
+
+      document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        cursor.style.left = mouseX - 4 + 'px';
+        cursor.style.top = mouseY - 4 + 'px';
+
+        ringX += (mouseX - ringX - 18) * 0.2;
+        ringY += (mouseY - ringY - 18) * 0.2;
+
+        cursorRing.style.left = ringX + 'px';
+        cursorRing.style.top = ringY + 'px';
+      });
+
+      document.addEventListener('mouseenter', () => {
+        cursor.style.opacity = '1';
+        cursorRing.style.opacity = '1';
+      });
+
+      document.addEventListener('mouseleave', () => {
+        cursor.style.opacity = '0';
+        cursorRing.style.opacity = '0';
+      });
+    }
+
+    // Navigation scroll effect
+    const nav = document.querySelector('nav');
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 80) {
+        nav.classList.add('scrolled');
+      } else {
+        nav.classList.remove('scrolled');
+      }
+    });
+
+    // Hero parallax
+    const heroContent = document.querySelector('.hero-content');
+    const heroBg = document.querySelector('.hero-bg');
+
+    window.addEventListener('scroll', () => {
+      const scrollY = window.scrollY;
+      const offset = scrollY * 0.3;
+      heroBg.style.transform = `translate3d(0, ${offset}px, 0)`;
+    });
+
+    // Intersection Observer for animations
+    const animationVariants = {
+      'fade-up': { opacity: [0, 1], transform: ['translateY(30px)', 'translateY(0)'] },
+      'fade': { opacity: [0, 1] },
+      'slide-left': { opacity: [0, 1], transform: ['translateX(40px)', 'translateX(0)'] },
+      'scale-up': { opacity: [0, 1], transform: ['scale(0.95)', 'scale(1)'] },
+      'line-reveal': { width: ['0', '100%'] },
+      'split': { opacity: [0, 1] }
+    };
+
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0

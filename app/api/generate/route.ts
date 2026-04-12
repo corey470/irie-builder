@@ -5,6 +5,11 @@ export const maxDuration = 60
 
 interface GenerateRequest {
   brandName: string
+  headline: string
+  tagline: string
+  about: string
+  heroImageUrl: string
+  ctaText: string
   vibe: string
   audience: string
   colors: { primary: string; accent: string; background: string }
@@ -16,119 +21,71 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: true, message }, { status })
 }
 
-const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder — the first website builder for brands with a vibe. You create living, breathing websites that feel ALIVE.
+/* Unsplash fallback images by category */
+const HERO_IMAGES: Record<string, string> = {
+  fashion: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80',
+  event: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1920&q=80',
+  wellness: 'https://images.unsplash.com/photo-1506905925637-6855e6d3f191?auto=format&fit=crop&w=1920&q=80',
+  food: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1920&q=80',
+  creative: 'https://images.unsplash.com/photo-1499781350541-7783f6c6a0c8?auto=format&fit=crop&w=1920&q=80',
+  default: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80',
+}
 
-YOUR PROCESS — start from the emotional brief, NOT from a template:
+function pickHeroImage(vibe: string, pageType: string): string {
+  const v = `${vibe} ${pageType}`.toLowerCase()
+  if (v.includes('fashion') || v.includes('streetwear') || v.includes('cloth') || v.includes('store')) return HERO_IMAGES.fashion
+  if (v.includes('event') || v.includes('festival') || v.includes('concert') || v.includes('ticket')) return HERO_IMAGES.event
+  if (v.includes('wellness') || v.includes('heal') || v.includes('cannabis') || v.includes('nature')) return HERO_IMAGES.wellness
+  if (v.includes('food') || v.includes('restaurant') || v.includes('cook') || v.includes('dish')) return HERO_IMAGES.food
+  if (v.includes('creative') || v.includes('portfolio') || v.includes('design') || v.includes('art')) return HERO_IMAGES.creative
+  return HERO_IMAGES.default
+}
 
-1. FEEL THE BRAND FIRST
-Read the vibe description deeply. What emotion dominates? What story arc does this brand want to tell? What should someone FEEL when they land here?
+const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. You create living, breathing websites that feel ALIVE.
 
-2. MAKE EXPLICIT CREATIVE DECISIONS — announce each one as an HTML comment at the top of your output:
+CRITICAL RULE: NEVER invent the user's copy. Use their EXACT headline, tagline, about text, and CTA button text verbatim. Only generate copy for sections the user didn't provide text for (e.g. feature descriptions, social proof quotes).
+
+CREATIVE DECISIONS — announce in an HTML comment at the top:
 <!-- CREATIVE DECISIONS
-Typography: [display font] + [body font] — why this pairing
-Motion vocabulary: [list the specific animation types you chose and why]
-Color temperature: [warm/cool/neutral] — how the palette serves the mood
-Section order: [list sections in order] — why this narrative arc
-Visual density: [generous spacing / controlled density] — what serves this brand
-Atmosphere: [grain/orbs/gradients/none] — what texture creates the right feel
+Typography: [display font] + [body font]
+Motion vocabulary: [list]
+Color temperature: [warm/cool/neutral]
+Section order: [list]
+Atmosphere: [grain/orbs/gradients]
 -->
 
-3. TYPOGRAPHY RULES
-- Choose TWO Google Fonts that serve the brand's personality
-- Display font for headlines (Playfair Display, Cormorant Garamond, DM Serif Display, Space Grotesk, etc.)
-- Body font for UI/text (Syne, DM Sans, Inter, Work Sans, etc.)
-- Load via <link> tag from fonts.googleapis.com
-- Use clamp() for fluid sizing: clamp(min, preferred, max)
+TYPOGRAPHY: Choose TWO Google Fonts. Display + Body. Load via <link>. Use clamp() for fluid sizing.
 
-4. MOTION — THE CORE DIFFERENTIATOR
-Every generated site MUST include ALL of these:
+MOTION (REQUIRED — all of these):
+a) IntersectionObserver with BIDIRECTIONAL animation (in on enter, reset on leave)
+b) 6 transition types, never same twice in a row: fade-up, fade, slide-left, scale-up, line-reveal, split
+c) Staggered reveals with data-delay="N" (80-120ms gaps)
+d) Hero parallax at 0.3x scroll speed via translate3d
+e) Custom cursor (REQUIRED, desktop @media(pointer:fine)):
+   .cursor{position:fixed;width:8px;height:8px;border-radius:50%;background:VAR_ACCENT;pointer-events:none;z-index:9999;transition:transform .1s}
+   .cursor-ring{position:fixed;width:36px;height:36px;border:1.5px solid VAR_ACCENT;border-radius:50%;pointer-events:none;z-index:9998;transition:transform .15s ease-out,opacity .15s}
+   JS: two divs follow mouse, ring with elastic delay
+f) Floating orbs: 2-3 blurred circles, accent at 5-8% opacity, 60-90s CSS drift
+g) Scrolling marquee strip with brand keywords
+h) Grain texture overlay at 3-5% opacity
+i) Nav: transparent → solid on scroll (80px threshold)
 
-a) IntersectionObserver scroll animations with BIDIRECTIONAL motion:
-   - Elements animate IN when entering viewport
-   - Elements animate OUT (reset) when leaving viewport
-   - This creates the "living" feel — the page breathes
+REQUIRED SECTION STRUCTURE (7 sections in this order):
+1. Hero — full screen (min-height:100svh), parallax background, user's headline + tagline + CTA button + inline email form
+2. Marquee strip — scrolling brand keywords
+3. Feature/Collection section — relevant to pageType
+4. Brand story — two-column layout with user's about text
+5. Atmosphere section — full-bleed image with overlay
+6. Email capture — prominent CTA section with user's CTA text
+7. Footer — brand name, tagline, copyright, placeholder links
 
-b) 6 transition types — NEVER use the same type twice in a row:
-   - fade-up: translateY(32px) + opacity
-   - fade: opacity only
-   - slide-left: translateX(-48px) + opacity
-   - scale-up: scale(0.94) + opacity
-   - line-reveal: scaleX(0) to scaleX(1)
-   - split: left panel slides left, right panel slides right
+RESPONSIVE: grids→1col at 768px, clamp() typography, 44px touch targets, overflow-x:hidden, forms stack at 480px
+ACCESSIBILITY: prefers-reduced-motion disables all, heading hierarchy, alt text, 4.5:1 contrast, focus indicators, labeled form inputs
+META: DOCTYPE, lang, charset, viewport, OG tags, title
 
-c) Staggered reveals: use data-delay="N" for children, with 80-120ms gaps
+OUTPUT: Return ONLY the complete HTML. No markdown. No backticks. No explanation. Self-contained with inline <style> and <script>. Only external resource: Google Fonts <link>.
 
-d) Hero parallax: background image moves at 0.3x scroll speed using transform: translate3d()
-
-e) Custom cursor (desktop only, @media(pointer:fine)):
-   - Small gold dot (8px) that follows mouse instantly
-   - Larger ring (36px) that follows with elastic delay
-   - Both use the brand's accent color
-
-f) Floating orbs: 2-3 large blurred circles using the accent color at 5-8% opacity,
-   animated with slow CSS keyframe drift (60-90s cycle), positioned absolute
-
-g) Scrolling text strip: a full-width marquee-style strip in the hero area
-   with repeating brand keywords, using CSS animation translateX
-
-h) Grain texture overlay: a full-viewport fixed div with a CSS noise pattern
-   at 3-5% opacity for atmosphere
-
-i) Nav behavior: starts transparent, fades to solid on scroll (80px threshold).
-   On scroll, nav items drift slightly toward center.
-
-5. SECTION STRUCTURE
-Generate 6-8 sections based on the pageType:
-
-For "landing": hero → problem/pain → solution → features/modes → social proof → CTA
-For "store": hero → featured collection → brand story → product grid → lifestyle → CTA
-For "portfolio": hero → selected work grid → about/process → testimonials → contact CTA
-For "event": hero → lineup/schedule → about → venue/location → tickets → sponsors → CTA
-
-Each section must have:
-- A data-animate attribute with the transition type
-- Proper semantic HTML
-- Generous padding: py of clamp(4rem, 10vw, 8rem)
-- Full-width with max-width container inside
-
-6. EMAIL CAPTURE
-Include TWO email forms:
-- One in the hero section (inline, minimal)
-- One as the bottom CTA section (larger, more prominent)
-Both with: <form> with email input + submit button, styled to match brand
-CRITICAL: Every <input> MUST have a matching <label> element with for/id pairing. Use visually-hidden labels if needed (position:absolute; clip:rect(0,0,0,0); height:1px; width:1px; overflow:hidden).
-
-7. RESPONSIVE DESIGN (CRITICAL)
-- All grids: use CSS grid with auto-fit/auto-fill or explicit breakpoints
-- At max-width 768px: all multi-column grids collapse to single column
-- Typography: ALL font sizes use clamp() for fluid scaling
-- Touch targets: all buttons and interactive elements min 44px height
-- No horizontal overflow: use overflow-x: hidden on body
-- Form layout: stacks vertically at 480px
-- Images: max-width: 100%, height: auto
-
-8. ACCESSIBILITY
-- prefers-reduced-motion: disable ALL animations, transitions, and transforms
-- Proper heading hierarchy (h1 → h2 → h3)
-- Alt text on all images
-- Sufficient color contrast (4.5:1 for text)
-- Focus indicators on all interactive elements
-- aria-labels on icon-only buttons
-
-9. META & STRUCTURE
-- Proper DOCTYPE, lang="en", charset UTF-8, viewport meta
-- OG meta tags with brand name and description
-- <title> tag with brand name
-- Footer with brand name, copyright year, and placeholder links
-
-10. OUTPUT FORMAT
-Return ONLY the complete HTML document. No markdown. No backticks. No explanation.
-The HTML must be completely self-contained — inline CSS in a <style> tag, inline JS in a <script> tag.
-The only external resources allowed are Google Fonts via <link>.
-
-QUALITY BAR: The output must feel like iriethreads.vercel.app — premium, atmospheric, alive with motion. NOT a template. An experience.
-
-IMPORTANT: Be concise with CSS. Combine selectors. Use shorthand properties. Keep total output under 8000 tokens so generation completes quickly.`
+Be concise with CSS. Combine selectors. Use shorthand. Keep under 8000 tokens.`
 
 export async function POST(request: Request) {
   try {
@@ -150,28 +107,28 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, timeout: 55000 })
 
-    const userPrompt = `Create a complete, self-contained HTML website for this brand:
+    const heroImage = body.heroImageUrl || pickHeroImage(body.vibe, body.pageType)
+
+    const userPrompt = `Create a complete website for this brand:
 
 Brand Name: ${body.brandName}
-Emotional Brief: ${body.vibe}
+Hero Headline (USE EXACTLY): ${body.headline || 'Welcome to ' + body.brandName}
+Tagline (USE EXACTLY): ${body.tagline || ''}
+About Text (USE EXACTLY in brand story section): ${body.about || ''}
+CTA Button Text (USE EXACTLY): ${body.ctaText || 'Get Started'}
+Hero Background Image URL: ${heroImage}
+Emotional Brief / Vibe: ${body.vibe}
 Target Audience: ${body.audience || 'general'}
-Color Palette:
-  - Primary: ${body.colors.primary}
-  - Accent: ${body.colors.accent}
-  - Background: ${body.colors.background}
+Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
 Mood: ${body.mood}
 Page Type: ${body.pageType}
 
-Remember:
-- Start from the emotion, not from a template
-- Make and document your creative decisions in an HTML comment
-- Include ALL motion features: parallax, IntersectionObserver bidirectional scroll animations, custom cursor, floating orbs, grain overlay, scrolling text strip, nav scroll behavior
-- Use 6 different transition types, never the same twice in a row
-- Two email capture forms with proper <label> elements
-- Fully responsive at 768px and 480px breakpoints
-- prefers-reduced-motion respected
-- Be concise with CSS — combine selectors, use shorthand
-- Output ONLY the HTML — no markdown, no backticks, no explanation`
+REMINDERS:
+- Use the user's headline, tagline, about, and CTA text VERBATIM — do not rephrase
+- Use the provided hero image URL as the hero background
+- Include ALL motion: parallax, bidirectional IntersectionObserver, custom cursor (gold dot + ring), orbs, grain, marquee, nav scroll
+- 7 sections: hero → marquee → features → brand story → atmosphere → email capture → footer
+- Output ONLY HTML`
 
     let html: string
     try {
@@ -187,7 +144,7 @@ Remember:
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown API error'
       if (msg.includes('timeout') || msg.includes('abort') || msg.includes('ETIMEDOUT')) {
-        return jsonError('Generation timed out. The AI took too long — please try again.', 504)
+        return jsonError('Generation timed out. The AI took too long \u2014 please try again.', 504)
       }
       if (msg.includes('rate_limit')) {
         return jsonError('Rate limited by AI provider. Please wait 60 seconds and try again.', 429)
@@ -202,10 +159,9 @@ Remember:
       return jsonError('AI returned an empty or invalid response. Please try again.', 502)
     }
 
-    // Strip any markdown wrapping if Claude accidentally adds it
     html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
 
-    // Extract metadata from the output
+    // Extract metadata
     const fonts: string[] = []
     const sections: string[] = []
     const motionVocabulary: string[] = []
@@ -217,28 +173,20 @@ Remember:
       })
     }
 
-    const sectionMatches = html.matchAll(/data-animate="([^"]+)"/g)
-    for (const m of sectionMatches) {
+    for (const m of html.matchAll(/data-animate="([^"]+)"/g)) {
       if (!motionVocabulary.includes(m[1])) motionVocabulary.push(m[1])
     }
 
-    const sectionTagMatches = html.matchAll(/<section[^>]*(?:id="([^"]+)"|class="[^"]*([^"]*section[^"]*)")/gi)
-    for (const m of sectionTagMatches) {
+    for (const m of html.matchAll(/<section[^>]*(?:id="([^"]+)"|class="[^"]*([^"]*section[^"]*)")/gi)) {
       const name = m[1] || 'section'
       if (!sections.includes(name)) sections.push(name)
     }
 
     return NextResponse.json({
       html,
-      metadata: {
-        fonts,
-        sections,
-        palette: body.colors,
-        motionVocabulary,
-      },
+      metadata: { fonts, sections, palette: body.colors, motionVocabulary },
     })
   } catch (err: unknown) {
-    // Catch-all: ALWAYS return valid JSON no matter what
     console.error('[generate] Unhandled error:', err)
     const message = err instanceof Error ? err.message : 'An unexpected error occurred'
     return jsonError(message, 500)
