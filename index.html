@@ -3,884 +3,167 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Irie Builder — Websites That Are Alive</title>
+<title>Irie Builder - Websites That Are Alive</title>
 <meta name="description" content="The first AI that builds from feeling, not templates. Describe what you want someone to feel. Everything else follows.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Syne:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
-:root {
-  --black: #080808;
-  --deep: #0D0D0D;
-  --dark: #141414;
-  --gold: #C9A84C;
-  --gold-light: #E8C96A;
-  --gold-dim: rgba(201,168,76,0.15);
-  --cream: #F2EDE4;
-  --white: #FAFAF7;
-  --muted: rgba(242,237,228,0.45);
-  --border: rgba(201,168,76,0.18);
-}
-
-html { scroll-behavior: smooth; }
-
-body {
-  background: var(--black);
-  color: var(--cream);
-  font-family: 'Syne', sans-serif;
-  font-weight: 300;
-  overflow-x: hidden;
-  cursor: none;
-}
-
-/* ── CUSTOM CURSOR ── */
-.cursor {
-  position: fixed;
-  width: 12px; height: 12px;
-  background: var(--gold);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9999;
-  transform: translate(-50%, -50%);
-  transition: transform 0.1s, width 0.3s, height 0.3s, opacity 0.3s;
-  mix-blend-mode: difference;
-}
-.cursor-ring {
-  position: fixed;
-  width: 40px; height: 40px;
-  border: 1px solid rgba(201,168,76,0.4);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 9998;
-  transform: translate(-50%, -50%);
-  transition: transform 0.15s ease-out, width 0.3s, height 0.3s, opacity 0.3s;
-}
-.cursor.expanded { width: 60px; height: 60px; opacity: 0.3; }
-.cursor-ring.expanded { width: 80px; height: 80px; opacity: 0; }
-
-/* ── GRAIN ── */
-body::after {
-  content: '';
-  position: fixed; inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 100;
-  opacity: 0.5;
-}
-
-/* ── NAV ── */
-nav {
-  position: fixed; top: 0; left: 0; right: 0;
-  z-index: 50;
-  padding: 2rem 3rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(to bottom, rgba(8,8,8,0.9), transparent);
-  backdrop-filter: blur(0px);
-}
-
-.nav-logo {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: 0.05em;
-  text-decoration: none;
-  opacity: 0;
-  animation: fadeDown 1s 0.5s ease forwards;
-}
-
-.nav-tag {
-  font-size: 11px;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: var(--muted);
-  opacity: 0;
-  animation: fadeDown 1s 0.7s ease forwards;
-}
-
-/* ── HERO ── */
-.hero {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 10rem 3rem 6rem;
-  position: relative;
-  overflow: hidden;
-}
-
-/* Animated background circles */
-.orb {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  filter: blur(80px);
-}
-.orb-1 {
-  width: 600px; height: 600px;
-  background: radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%);
-  top: -200px; right: -200px;
-  animation: orbFloat 12s ease-in-out infinite;
-}
-.orb-2 {
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, rgba(201,168,76,0.05) 0%, transparent 70%);
-  bottom: -100px; left: 10%;
-  animation: orbFloat 16s ease-in-out infinite reverse;
-}
-
-@keyframes orbFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -40px) scale(1.05); }
-  66% { transform: translate(-20px, 30px) scale(0.95); }
-}
-
-/* Scrolling text strip */
-.text-strip {
-  position: absolute;
-  bottom: 6rem;
-  left: 0; right: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  opacity: 0.12;
-  pointer-events: none;
-}
-
-.text-strip-inner {
-  display: inline-block;
-  animation: stripScroll 20s linear infinite;
-  font-family: 'Playfair Display', serif;
-  font-style: italic;
-  font-size: 5rem;
-  color: var(--gold);
-  letter-spacing: 0.05em;
-}
-
-@keyframes stripScroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-
-.hero-eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 2.5rem;
-  opacity: 0;
-  animation: fadeUp 1s 0.3s ease forwards;
-}
-
-.hero-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(4rem, 9vw, 10rem);
-  font-weight: 900;
-  line-height: 0.92;
-  letter-spacing: -0.02em;
-  color: var(--white);
-  max-width: 900px;
-  margin-bottom: 3rem;
-  opacity: 0;
-  animation: fadeUp 1.2s 0.5s ease forwards;
-}
-
-.hero-title em {
-  font-style: italic;
-  color: var(--gold);
-  display: block;
-}
-
-.hero-title .outline {
-  -webkit-text-stroke: 1px rgba(242,237,228,0.3);
-  color: transparent;
-}
-
-.hero-sub {
-  font-size: clamp(1rem, 1.8vw, 1.3rem);
-  line-height: 1.7;
-  color: var(--muted);
-  max-width: 520px;
-  margin-bottom: 3.5rem;
-  opacity: 0;
-  animation: fadeUp 1s 0.8s ease forwards;
-}
-
-.hero-sub strong {
-  color: var(--cream);
-  font-weight: 500;
-}
-
-/* ── WAITLIST FORM ── */
-.waitlist-form {
-  display: flex;
-  gap: 0;
-  max-width: 480px;
-  width: 100%;
-  opacity: 0;
-  animation: fadeUp 1s 1s ease forwards;
-}
-
-.waitlist-input {
-  flex: 1;
-  background: rgba(242,237,228,0.06);
-  border: 1px solid var(--border);
-  border-right: none;
-  color: var(--cream);
-  font-family: 'Syne', sans-serif;
-  font-size: 14px;
-  padding: 1rem 1.5rem;
-  outline: none;
-  transition: background 0.3s, border-color 0.3s;
-}
-
-.waitlist-input::placeholder { color: rgba(242,237,228,0.3); }
-.waitlist-input:focus {
-  background: rgba(242,237,228,0.1);
-  border-color: rgba(201,168,76,0.5);
-}
-
-.waitlist-btn {
-  background: var(--gold);
-  color: var(--black);
-  border: none;
-  font-family: 'Syne', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 1rem 2rem;
-  cursor: none;
-  transition: background 0.3s, transform 0.2s;
-  white-space: nowrap;
-}
-
-.waitlist-btn:hover {
-  background: var(--gold-light);
-  transform: translateX(3px);
-}
-
-.waitlist-btn:active { transform: translateX(1px); }
-
-.form-note {
-  margin-top: 1rem;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  color: rgba(242,237,228,0.25);
-  opacity: 0;
-  animation: fadeUp 1s 1.2s ease forwards;
-}
-
-.success-msg {
-  display: none;
-  padding: 1rem 1.5rem;
-  background: var(--gold-dim);
-  border: 1px solid var(--border);
-  color: var(--gold);
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  max-width: 480px;
-}
-
-/* ── SECTION: THE QUESTION ── */
-.section-question {
-  padding: 10rem 3rem;
-  position: relative;
-  border-top: 1px solid var(--border);
-}
-
-.question-label {
-  font-size: 10px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: var(--gold);
-  opacity: 0.6;
-  margin-bottom: 4rem;
-}
-
-.question-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1px;
-  background: var(--border);
-  max-width: 900px;
-  margin-bottom: 6rem;
-}
-
-.question-cell {
-  background: var(--black);
-  padding: 3rem;
-}
-
-.question-cell-label {
-  font-size: 10px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 1.5rem;
-}
-
-.question-cell.theirs .question-cell-label { color: rgba(242,237,228,0.2); }
-.question-cell.ours .question-cell-label { color: var(--gold); }
-
-.question-text {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(1.4rem, 2.5vw, 2rem);
-  font-style: italic;
-  line-height: 1.3;
-  color: var(--white);
-}
-
-.question-cell.theirs .question-text {
-  color: rgba(242,237,228,0.3);
-  text-decoration: line-through;
-  text-decoration-color: rgba(242,237,228,0.1);
-}
-
-.big-statement {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(2.5rem, 5vw, 5.5rem);
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--white);
-  max-width: 800px;
-}
-
-.big-statement em {
-  font-style: italic;
-  color: var(--gold);
-}
-
-/* ── SECTION: HOW IT FEELS ── */
-.section-feels {
-  padding: 10rem 3rem;
-  border-top: 1px solid var(--border);
-  position: relative;
-  overflow: hidden;
-}
-
-.feels-label {
-  font-size: 10px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: var(--gold);
-  opacity: 0.6;
-  margin-bottom: 5rem;
-}
-
-.feels-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.feels-item {
-  display: grid;
-  grid-template-columns: 80px 1fr 1fr;
-  gap: 3rem;
-  padding: 3rem 0;
-  border-bottom: 1px solid rgba(201,168,76,0.08);
-  align-items: start;
-  transition: background 0.3s;
-  padding-left: 1rem;
-  padding-right: 1rem;
-  margin: 0 -1rem;
-}
-
-.feels-item:hover {
-  background: rgba(201,168,76,0.03);
-}
-
-.feels-num {
-  font-family: 'Playfair Display', serif;
-  font-size: 1rem;
-  font-style: italic;
-  color: var(--gold);
-  opacity: 0.5;
-  padding-top: 0.3rem;
-}
-
-.feels-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(1.5rem, 2.5vw, 2.2rem);
-  font-weight: 700;
-  color: var(--white);
-  line-height: 1.2;
-}
-
-.feels-desc {
-  font-size: 14px;
-  line-height: 1.9;
-  color: var(--muted);
-  padding-top: 0.5rem;
-}
-
-/* ── SECTION: THREE MODES ── */
-.section-modes {
-  padding: 10rem 3rem;
-  border-top: 1px solid var(--border);
-}
-
-.modes-label {
-  font-size: 10px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: var(--gold);
-  opacity: 0.6;
-  margin-bottom: 5rem;
-}
-
-.modes-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--border);
-}
-
-.mode-card {
-  background: var(--black);
-  padding: 3rem 2.5rem;
-  position: relative;
-  overflow: hidden;
-  transition: background 0.4s;
-}
-
-.mode-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: var(--gold);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform 0.4s ease;
-}
-
-.mode-card:hover { background: rgba(201,168,76,0.04); }
-.mode-card:hover::before { transform: scaleX(1); }
-
-.mode-letter {
-  font-family: 'Playfair Display', serif;
-  font-size: 5rem;
-  font-weight: 900;
-  font-style: italic;
-  color: var(--gold);
-  opacity: 0.15;
-  line-height: 1;
-  margin-bottom: 1.5rem;
-  transition: opacity 0.4s;
-}
-
-.mode-card:hover .mode-letter { opacity: 0.3; }
-
-.mode-name {
-  font-size: 10px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--gold);
-  margin-bottom: 1rem;
-}
-
-.mode-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: var(--white);
-  margin-bottom: 1rem;
-  line-height: 1.3;
-}
-
-.mode-desc {
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--muted);
-}
-
-/* ── SECTION: NORTH STAR ── */
-.section-north {
-  padding: 12rem 3rem;
-  border-top: 1px solid var(--border);
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-}
-
-.north-bg-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: 'Playfair Display', serif;
-  font-size: 20vw;
-  font-weight: 900;
-  color: rgba(201,168,76,0.03);
-  white-space: nowrap;
-  pointer-events: none;
-  letter-spacing: -0.05em;
-}
-
-.north-quote {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(1.8rem, 4vw, 4rem);
-  font-style: italic;
-  font-weight: 400;
-  line-height: 1.3;
-  color: var(--white);
-  max-width: 900px;
-  margin: 0 auto 4rem;
-  position: relative;
-}
-
-.north-quote::before {
-  content: '"';
-  position: absolute;
-  top: -3rem; left: -2rem;
-  font-size: 8rem;
-  color: var(--gold);
-  opacity: 0.2;
-  line-height: 1;
-  font-style: normal;
-}
-
-.north-attr {
-  font-size: 11px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--muted);
-  position: relative;
-}
-
-/* ── SECTION: FINAL CTA ── */
-.section-cta {
-  padding: 10rem 3rem;
-  border-top: 1px solid var(--border);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6rem;
-  align-items: center;
-}
-
-.cta-left-title {
-  font-family: 'Playfair Display', serif;
-  font-size: clamp(2.5rem, 4vw, 4.5rem);
-  font-weight: 700;
-  line-height: 1.1;
-  color: var(--white);
-  margin-bottom: 2rem;
-}
-
-.cta-left-title em {
-  font-style: italic;
-  color: var(--gold);
-}
-
-.cta-left-body {
-  font-size: 15px;
-  line-height: 1.9;
-  color: var(--muted);
-}
-
-.cta-right {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.cta-right-label {
-  font-size: 10px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: var(--gold);
-  opacity: 0.7;
-}
-
-.waitlist-form-2 {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.waitlist-input-2 {
-  background: rgba(242,237,228,0.06);
-  border: 1px solid var(--border);
-  color: var(--cream);
-  font-family: 'Syne', sans-serif;
-  font-size: 14px;
-  padding: 1rem 1.5rem;
-  outline: none;
-  width: 100%;
-  transition: background 0.3s, border-color 0.3s;
-}
-
-.waitlist-input-2::placeholder { color: rgba(242,237,228,0.3); }
-.waitlist-input-2:focus {
-  background: rgba(242,237,228,0.1);
-  border-color: rgba(201,168,76,0.5);
-}
-
-.waitlist-btn-2 {
-  background: var(--gold);
-  color: var(--black);
-  border: none;
-  font-family: 'Syne', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  padding: 1.1rem 2rem;
-  cursor: none;
-  transition: background 0.3s;
-  width: 100%;
-}
-
-.waitlist-btn-2:hover { background: var(--gold-light); }
-
-.cta-note {
-  font-size: 11px;
-  color: rgba(242,237,228,0.2);
-  letter-spacing: 0.08em;
-}
-
-/* ── FOOTER ── */
-footer {
-  padding: 3rem;
-  border-top: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.footer-brand {
-  font-family: 'Playfair Display', serif;
-  font-size: 1rem;
-  font-style: italic;
-  color: var(--gold);
-}
-
-.footer-links {
-  display: flex;
-  gap: 2rem;
-}
-
-.footer-link {
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--muted);
-  text-decoration: none;
-  transition: color 0.3s;
-}
-
-.footer-link:hover { color: var(--gold); }
-
-.footer-copy {
-  font-size: 11px;
-  color: rgba(242,237,228,0.2);
-  letter-spacing: 0.1em;
-}
-
-/* ── SCROLL REVEALS ── */
-.reveal {
-  opacity: 0;
-  transform: translateY(40px);
-  transition: opacity 0.8s ease, transform 0.8s ease;
-}
-
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* ── ANIMATIONS ── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeDown {
-  from { opacity: 0; transform: translateY(-20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ── RESPONSIVE ── */
-@media (max-width: 900px) {
-  .hero, .section-question, .section-feels,
-  .section-modes, .section-north, .section-cta { padding-left: 1.5rem; padding-right: 1.5rem; }
-  .question-grid { grid-template-columns: 1fr; }
-  .feels-item { grid-template-columns: 50px 1fr; }
-  .feels-desc { grid-column: 2; }
-  .modes-grid { grid-template-columns: 1fr; }
-  .section-cta { grid-template-columns: 1fr; gap: 3rem; }
-  nav { padding: 1.5rem; }
-  .cursor, .cursor-ring { display: none; }
-  body { cursor: auto; }
-  .waitlist-btn, .waitlist-btn-2 { cursor: pointer; }
-}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--black:#080808;--gold:#C9A84C;--gold-light:#E8C96A;--gold-dim:rgba(201,168,76,0.15);--cream:#F2EDE4;--white:#FAFAF7;--muted:rgba(242,237,228,0.45);--border:rgba(201,168,76,0.18)}
+html{scroll-behavior:smooth}
+body{background:var(--black);color:var(--cream);font-family:'Syne',sans-serif;font-weight:300;overflow-x:hidden;cursor:none}
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");pointer-events:none;z-index:100;opacity:0.5}
+.cursor{position:fixed;width:12px;height:12px;background:var(--gold);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:width 0.3s,height 0.3s;mix-blend-mode:difference}
+.cursor-ring{position:fixed;width:40px;height:40px;border:1px solid rgba(201,168,76,0.4);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:all 0.15s ease-out}
+nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to bottom,rgba(8,8,8,0.9),transparent)}
+.nav-logo{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--gold);letter-spacing:0.05em;text-decoration:none;opacity:0;animation:fadeDown 1s 0.5s ease forwards}
+.nav-tag{font-size:11px;letter-spacing:0.25em;text-transform:uppercase;color:var(--muted);opacity:0;animation:fadeDown 1s 0.7s ease forwards}
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:10rem 3rem 6rem;position:relative;overflow:hidden}
+.orb{position:absolute;border-radius:50%;pointer-events:none;filter:blur(80px)}
+.orb-1{width:600px;height:600px;background:radial-gradient(circle,rgba(201,168,76,0.08) 0%,transparent 70%);top:-200px;right:-200px;animation:orbFloat 12s ease-in-out infinite}
+.orb-2{width:400px;height:400px;background:radial-gradient(circle,rgba(201,168,76,0.05) 0%,transparent 70%);bottom:-100px;left:10%;animation:orbFloat 16s ease-in-out infinite reverse}
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(30px,-40px) scale(1.05)}66%{transform:translate(-20px,30px) scale(0.95)}}
+.text-strip{position:absolute;bottom:6rem;left:0;right:0;overflow:hidden;white-space:nowrap;opacity:0.12;pointer-events:none}
+.text-strip-inner{display:inline-block;animation:stripScroll 20s linear infinite;font-family:'Playfair Display',serif;font-style:italic;font-size:5rem;color:var(--gold);letter-spacing:0.05em}
+@keyframes stripScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.hero-eyebrow{font-size:11px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);margin-bottom:2.5rem;opacity:0;animation:fadeUp 1s 0.3s ease forwards}
+.hero-title{font-family:'Playfair Display',serif;font-size:clamp(4rem,9vw,10rem);font-weight:900;line-height:0.92;letter-spacing:-0.02em;color:var(--white);max-width:900px;margin-bottom:3rem;opacity:0;animation:fadeUp 1.2s 0.5s ease forwards}
+.hero-title em{font-style:italic;color:var(--gold);display:block}
+.hero-sub{font-size:clamp(1rem,1.8vw,1.3rem);line-height:1.7;color:var(--muted);max-width:520px;margin-bottom:3.5rem;opacity:0;animation:fadeUp 1s 0.8s ease forwards}
+.hero-sub strong{color:var(--cream);font-weight:500}
+.waitlist-form{display:flex;gap:0;max-width:480px;width:100%;opacity:0;animation:fadeUp 1s 1s ease forwards}
+.waitlist-input{flex:1;background:rgba(242,237,228,0.06);border:1px solid var(--border);border-right:none;color:var(--cream);font-family:'Syne',sans-serif;font-size:14px;padding:1rem 1.5rem;outline:none;transition:background 0.3s,border-color 0.3s}
+.waitlist-input::placeholder{color:rgba(242,237,228,0.3)}
+.waitlist-input:focus{background:rgba(242,237,228,0.1);border-color:rgba(201,168,76,0.5)}
+.waitlist-btn{background:var(--gold);color:var(--black);border:none;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;padding:1rem 2rem;cursor:pointer;transition:background 0.3s,transform 0.2s;white-space:nowrap}
+.waitlist-btn:hover{background:var(--gold-light);transform:translateX(3px)}
+.form-note{margin-top:1rem;font-size:11px;letter-spacing:0.1em;color:rgba(242,237,228,0.25);opacity:0;animation:fadeUp 1s 1.2s ease forwards}
+.success-msg{display:none;padding:1rem 1.5rem;background:var(--gold-dim);border:1px solid var(--border);color:var(--gold);font-size:13px;letter-spacing:0.05em;max-width:480px}
+.section-question{padding:10rem 3rem;position:relative;border-top:1px solid var(--border)}
+.question-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.6;margin-bottom:4rem}
+.question-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);max-width:900px;margin-bottom:6rem}
+.question-cell{background:var(--black);padding:3rem}
+.question-cell-label{font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:var(--muted);margin-bottom:1.5rem}
+.question-cell.theirs .question-cell-label{color:rgba(242,237,228,0.2)}
+.question-cell.ours .question-cell-label{color:var(--gold)}
+.question-text{font-family:'Playfair Display',serif;font-size:clamp(1.4rem,2.5vw,2rem);font-style:italic;line-height:1.3;color:var(--white)}
+.question-cell.theirs .question-text{color:rgba(242,237,228,0.3);text-decoration:line-through;text-decoration-color:rgba(242,237,228,0.1)}
+.big-statement{font-family:'Playfair Display',serif;font-size:clamp(2.5rem,5vw,5.5rem);font-weight:700;line-height:1.1;color:var(--white);max-width:800px}
+.big-statement em{font-style:italic;color:var(--gold)}
+.section-feels{padding:10rem 3rem;border-top:1px solid var(--border)}
+.feels-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.6;margin-bottom:5rem}
+.feels-item{display:grid;grid-template-columns:80px 1fr 1fr;gap:3rem;padding:3rem 1rem;border-bottom:1px solid rgba(201,168,76,0.08);align-items:start;transition:background 0.3s;margin:0 -1rem}
+.feels-item:hover{background:rgba(201,168,76,0.03)}
+.feels-num{font-family:'Playfair Display',serif;font-size:1rem;font-style:italic;color:var(--gold);opacity:0.5;padding-top:0.3rem}
+.feels-title{font-family:'Playfair Display',serif;font-size:clamp(1.5rem,2.5vw,2.2rem);font-weight:700;color:var(--white);line-height:1.2}
+.feels-desc{font-size:14px;line-height:1.9;color:var(--muted);padding-top:0.5rem}
+.section-modes{padding:10rem 3rem;border-top:1px solid var(--border)}
+.modes-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.6;margin-bottom:5rem}
+.modes-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border)}
+.mode-card{background:var(--black);padding:3rem 2.5rem;position:relative;overflow:hidden;transition:background 0.4s}
+.mode-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--gold);transform:scaleX(0);transform-origin:left;transition:transform 0.4s ease}
+.mode-card:hover{background:rgba(201,168,76,0.04)}
+.mode-card:hover::before{transform:scaleX(1)}
+.mode-letter{font-family:'Playfair Display',serif;font-size:5rem;font-weight:900;font-style:italic;color:var(--gold);opacity:0.15;line-height:1;margin-bottom:1.5rem;transition:opacity 0.4s}
+.mode-card:hover .mode-letter{opacity:0.3}
+.mode-name{font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}
+.mode-title{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:var(--white);margin-bottom:1rem;line-height:1.3}
+.mode-desc{font-size:13px;line-height:1.8;color:var(--muted)}
+.section-north{padding:12rem 3rem;border-top:1px solid var(--border);text-align:center;position:relative;overflow:hidden}
+.north-bg-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Playfair Display',serif;font-size:20vw;font-weight:900;color:rgba(201,168,76,0.03);white-space:nowrap;pointer-events:none;letter-spacing:-0.05em}
+.north-quote{font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4vw,4rem);font-style:italic;font-weight:400;line-height:1.3;color:var(--white);max-width:900px;margin:0 auto 4rem;position:relative}
+.north-attr{font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:var(--muted);position:relative}
+.section-cta{padding:10rem 3rem;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:6rem;align-items:center}
+.cta-left-title{font-family:'Playfair Display',serif;font-size:clamp(2.5rem,4vw,4.5rem);font-weight:700;line-height:1.1;color:var(--white);margin-bottom:2rem}
+.cta-left-title em{font-style:italic;color:var(--gold)}
+.cta-left-body{font-size:15px;line-height:1.9;color:var(--muted)}
+.cta-right{display:flex;flex-direction:column;gap:1.5rem}
+.cta-right-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.7}
+.waitlist-form-2{display:flex;flex-direction:column;gap:1rem}
+.waitlist-input-2{background:rgba(242,237,228,0.06);border:1px solid var(--border);color:var(--cream);font-family:'Syne',sans-serif;font-size:14px;padding:1rem 1.5rem;outline:none;width:100%;transition:background 0.3s,border-color 0.3s}
+.waitlist-input-2::placeholder{color:rgba(242,237,228,0.3)}
+.waitlist-input-2:focus{background:rgba(242,237,228,0.1);border-color:rgba(201,168,76,0.5)}
+.waitlist-btn-2{background:var(--gold);color:var(--black);border:none;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:0.15em;text-transform:uppercase;padding:1.1rem 2rem;cursor:pointer;transition:background 0.3s;width:100%}
+.waitlist-btn-2:hover{background:var(--gold-light)}
+.cta-note{font-size:11px;color:rgba(242,237,228,0.2);letter-spacing:0.08em}
+footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.footer-brand{font-family:'Playfair Display',serif;font-size:1rem;font-style:italic;color:var(--gold)}
+.footer-links{display:flex;gap:2rem}
+.footer-link{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);text-decoration:none;transition:color 0.3s}
+.footer-link:hover{color:var(--gold)}
+.footer-copy{font-size:11px;color:rgba(242,237,228,0.2);letter-spacing:0.1em}
+.reveal{opacity:0;transform:translateY(40px);transition:opacity 0.8s ease,transform 0.8s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:900px){.hero,.section-question,.section-feels,.section-modes,.section-north,.section-cta{padding-left:1.5rem;padding-right:1.5rem}.question-grid,.modes-grid,.section-cta{grid-template-columns:1fr}.feels-item{grid-template-columns:50px 1fr}.cursor,.cursor-ring{display:none}body{cursor:auto}.waitlist-btn,.waitlist-btn-2{cursor:pointer}nav{padding:1.5rem}}
 </style>
 </head>
 <body>
-
-<!-- CURSOR -->
 <div class="cursor" id="cursor"></div>
 <div class="cursor-ring" id="cursorRing"></div>
-
-<!-- NAV -->
 <nav>
   <a href="#" class="nav-logo">Irie Builder</a>
   <span class="nav-tag">Coming Soon</span>
 </nav>
-
-<!-- HERO -->
 <section class="hero">
   <div class="orb orb-1"></div>
   <div class="orb orb-2"></div>
-
   <p class="hero-eyebrow">Introducing Irie Builder</p>
-
-  <h1 class="hero-title">
-    Websites<br>
-    that are<br>
-    <em>alive.</em>
-  </h1>
-
-  <p class="hero-sub">
-    Every other tool asks what kind of page you want to build.<br>
-    <strong>We ask what you want someone to feel.</strong><br>
-    Everything else follows.
-  </p>
-
-  <form class="waitlist-form" id="heroForm" onsubmit="handleSubmit(event, 'heroSuccess')">
+  <h1 class="hero-title">Websites<br>that are<br><em>alive.</em></h1>
+  <p class="hero-sub">Every other tool asks what kind of page you want to build.<br><strong>We ask what you want someone to feel.</strong><br>Everything else follows.</p>
+  <form class="waitlist-form" id="heroForm" onsubmit="handleSubmit(event,'heroSuccess','hero')">
     <input type="email" class="waitlist-input" placeholder="your@email.com" required>
-    <button type="submit" class="waitlist-btn">Get Early Access</button>
+    <button type="submit" class="waitlist-btn" id="heroBtn">Get Early Access</button>
   </form>
-  <div class="success-msg" id="heroSuccess">✓ &nbsp; You're on the list. We'll be in touch.</div>
+  <div class="success-msg" id="heroSuccess">&#10003; &nbsp; You're on the list. We'll be in touch.</div>
   <p class="form-note">No spam. No noise. Just early access when we're ready.</p>
-
-  <div class="text-strip">
-    <span class="text-strip-inner">
-      Alive &nbsp;·&nbsp; Motion &nbsp;·&nbsp; Story &nbsp;·&nbsp; Feeling &nbsp;·&nbsp; Experience &nbsp;·&nbsp; Alive &nbsp;·&nbsp; Motion &nbsp;·&nbsp; Story &nbsp;·&nbsp; Feeling &nbsp;·&nbsp; Experience &nbsp;·&nbsp;
-    </span>
-  </div>
+  <div class="text-strip"><span class="text-strip-inner">Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp; Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp;</span></div>
 </section>
-
-<!-- THE QUESTION -->
 <section class="section-question">
   <p class="question-label reveal">The difference</p>
-
   <div class="question-grid reveal">
-    <div class="question-cell theirs">
-      <p class="question-cell-label">Every other tool asks</p>
-      <p class="question-text">"What kind of page do you want to build?"</p>
-    </div>
-    <div class="question-cell ours">
-      <p class="question-cell-label">Irie Builder asks</p>
-      <p class="question-text">"What do you want someone to feel when they land here?"</p>
-    </div>
+    <div class="question-cell theirs"><p class="question-cell-label">Every other tool asks</p><p class="question-text">"What kind of page do you want to build?"</p></div>
+    <div class="question-cell ours"><p class="question-cell-label">Irie Builder asks</p><p class="question-text">"What do you want someone to feel when they land here?"</p></div>
   </div>
-
-  <p class="big-statement reveal">
-    Not a website builder.<br>
-    A <em>creative director</em><br>
-    powered by AI.
-  </p>
+  <p class="big-statement reveal">Not a website builder.<br>A <em>creative director</em><br>powered by AI.</p>
 </section>
-
-<!-- HOW IT FEELS -->
 <section class="section-feels">
   <p class="feels-label reveal">What it builds</p>
-
-  <div class="feels-items">
-    <div class="feels-item reveal">
-      <span class="feels-num">01</span>
-      <h3 class="feels-title">Motion with meaning</h3>
-      <p class="feels-desc">Scroll-triggered reveals. Parallax layers. Hero video. Micro-interactions. Not decoration — narrative tools that pull people deeper into your story.</p>
-    </div>
-    <div class="feels-item reveal">
-      <span class="feels-num">02</span>
-      <h3 class="feels-title">Story architecture</h3>
-      <p class="feels-desc">The AI decides what you see first, where the surprise lands, what the payoff feels like. Paced like a great film, not laid out like a brochure.</p>
-    </div>
-    <div class="feels-item reveal">
-      <span class="feels-num">03</span>
-      <h3 class="feels-title">Visual atmosphere</h3>
-      <p class="feels-desc">Color temperature. Typography weight. Space vs. density. All calibrated to the emotional brief — not picked from a dropdown.</p>
-    </div>
-    <div class="feels-item reveal">
-      <span class="feels-num">04</span>
-      <h3 class="feels-title">Your voice, everywhere</h3>
-      <p class="feels-desc">Every word written in your brand voice. Headlines, body copy, CTAs — all on-brand, all ready to publish. No placeholder text.</p>
-    </div>
-    <div class="feels-item reveal">
-      <span class="feels-num">05</span>
-      <h3 class="feels-title">Live on your URL</h3>
-      <p class="feels-desc">Not downloaded. Not exported. Not copy-pasted. Published directly to your domain the moment you're ready. One click.</p>
-    </div>
-  </div>
+  <div class="feels-item reveal"><span class="feels-num">01</span><h3 class="feels-title">Motion with meaning</h3><p class="feels-desc">Scroll-triggered reveals. Parallax layers. Hero video. Micro-interactions. Not decoration - narrative tools that pull people deeper into your story.</p></div>
+  <div class="feels-item reveal"><span class="feels-num">02</span><h3 class="feels-title">Story architecture</h3><p class="feels-desc">The AI decides what you see first, where the surprise lands, what the payoff feels like. Paced like a great film, not laid out like a brochure.</p></div>
+  <div class="feels-item reveal"><span class="feels-num">03</span><h3 class="feels-title">Visual atmosphere</h3><p class="feels-desc">Color temperature. Typography weight. Space vs. density. All calibrated to the emotional brief - not picked from a dropdown.</p></div>
+  <div class="feels-item reveal"><span class="feels-num">04</span><h3 class="feels-title">Your voice, everywhere</h3><p class="feels-desc">Every word written in your brand voice. Headlines, body copy, CTAs - all on-brand, all ready to publish. No placeholder text.</p></div>
+  <div class="feels-item reveal"><span class="feels-num">05</span><h3 class="feels-title">Live on your URL</h3><p class="feels-desc">Not downloaded. Not exported. Not copy-pasted. Published directly to your domain the moment you're ready. One click.</p></div>
 </section>
-
-<!-- THREE MODES -->
 <section class="section-modes">
   <p class="modes-label reveal">Three ways in</p>
-
   <div class="modes-grid reveal">
-    <div class="mode-card">
-      <div class="mode-letter">A</div>
-      <p class="mode-name">Mode A — Visionary</p>
-      <h3 class="mode-title">Describe the feeling. Walk away with the experience.</h3>
-      <p class="mode-desc">Type "warm reggae energy, summer festival, makes you want to move." Hit generate. The AI handles every decision — motion, copy, structure, atmosphere. You approve. It goes live.</p>
-    </div>
-    <div class="mode-card">
-      <div class="mode-letter">B</div>
-      <p class="mode-name">Mode B — Collaborator</p>
-      <h3 class="mode-title">You guide the story. It executes.</h3>
-      <p class="mode-desc">See the AI's creative decisions in real time. Swap a section, adjust the pacing, shift the emotional arc. The AI reasons with you — not just for you.</p>
-    </div>
-    <div class="mode-card">
-      <div class="mode-letter">C</div>
-      <p class="mode-name">Mode C — Architect</p>
-      <h3 class="mode-title">You direct. It codes. You ship.</h3>
-      <p class="mode-desc">Define the structure, write the copy, specify the animations. The AI handles all the code — scroll behavior, motion choreography, responsive logic. Zero compromise.</p>
-    </div>
+    <div class="mode-card"><div class="mode-letter">A</div><p class="mode-name">Mode A - Visionary</p><h3 class="mode-title">Describe the feeling. Walk away with the experience.</h3><p class="mode-desc">Type "warm reggae energy, summer festival, makes you want to move." Hit generate. The AI handles every decision. You approve. It goes live.</p></div>
+    <div class="mode-card"><div class="mode-letter">B</div><p class="mode-name">Mode B - Collaborator</p><h3 class="mode-title">You guide the story. It executes.</h3><p class="mode-desc">See the AI's creative decisions in real time. Swap a section, adjust the pacing, shift the emotional arc. The AI reasons with you - not just for you.</p></div>
+    <div class="mode-card"><div class="mode-letter">C</div><p class="mode-name">Mode C - Architect</p><h3 class="mode-title">You direct. It codes. You ship.</h3><p class="mode-desc">Define the structure, write the copy, specify the animations. The AI handles all the code - scroll behavior, motion choreography, responsive logic.</p></div>
   </div>
 </section>
-
-<!-- NORTH STAR -->
 <section class="section-north">
   <div class="north-bg-text">ALIVE</div>
-  <blockquote class="north-quote reveal">
-    Like a good book you can't put down — where every scroll reveals something new, and the story just keeps getting better.
-  </blockquote>
+  <blockquote class="north-quote reveal">Like a good book you can't put down - where every scroll reveals something new, and the story just keeps getting better.</blockquote>
   <p class="north-attr reveal">The north star. Every build decision measured against this.</p>
 </section>
-
-<!-- FINAL CTA -->
 <section class="section-cta">
   <div class="cta-left reveal">
-    <h2 class="cta-left-title">
-      The web is ready<br>
-      for something<br>
-      <em>different.</em>
-    </h2>
-    <p class="cta-left-body">
-      Everyone can build a website. The question is whether yours makes people feel something. Get early access and be among the first to build experiences that move.
-    </p>
+    <h2 class="cta-left-title">The web is ready<br>for something<br><em>different.</em></h2>
+    <p class="cta-left-body">Everyone can build a website. The question is whether yours makes people feel something. Get early access and be among the first to build experiences that move.</p>
   </div>
-
   <div class="cta-right reveal">
     <p class="cta-right-label">Join the waitlist</p>
-    <form class="waitlist-form-2" id="ctaForm" onsubmit="handleSubmit(event, 'ctaSuccess')">
+    <form class="waitlist-form-2" id="ctaForm" onsubmit="handleSubmit(event,'ctaSuccess','cta')">
       <input type="email" class="waitlist-input-2" placeholder="your@email.com" required>
-      <button type="submit" class="waitlist-btn-2">Get Early Access</button>
+      <button type="submit" class="waitlist-btn-2" id="ctaBtn">Get Early Access</button>
     </form>
-    <div class="success-msg" id="ctaSuccess" style="max-width:100%;">✓ &nbsp; You're on the list. We'll be in touch.</div>
+    <div class="success-msg" id="ctaSuccess" style="max-width:100%">&#10003; &nbsp; You're on the list. We'll be in touch.</div>
     <p class="cta-note">No spam. Early access only. Built in New Smyrna Beach, FL.</p>
   </div>
 </section>
-
-<!-- FOOTER -->
 <footer>
   <span class="footer-brand">Irie Builder</span>
   <div class="footer-links">
@@ -888,75 +171,40 @@ footer {
     <a href="https://iriesuite.com" class="footer-link">Irie Suite</a>
     <a href="https://iriecommerce.com" class="footer-link">Irie Commerce</a>
   </div>
-  <span class="footer-copy">© 2026 Irie Builder</span>
+  <span class="footer-copy">&copy; 2026 Irie Builder</span>
 </footer>
-
 <script>
-// ── CURSOR ──
-const cursor = document.getElementById('cursor');
-const ring = document.getElementById('cursorRing');
-
-document.addEventListener('mousemove', (e) => {
-  cursor.style.left = e.clientX + 'px';
-  cursor.style.top = e.clientY + 'px';
-  setTimeout(() => {
-    ring.style.left = e.clientX + 'px';
-    ring.style.top = e.clientY + 'px';
-  }, 80);
-});
-
-document.querySelectorAll('button, a, input').forEach(el => {
-  el.addEventListener('mouseenter', () => {
-    cursor.classList.add('expanded');
-    ring.classList.add('expanded');
-  });
-  el.addEventListener('mouseleave', () => {
-    cursor.classList.remove('expanded');
-    ring.classList.remove('expanded');
-  });
-});
-
-// ── SCROLL REVEAL ──
-const reveals = document.querySelectorAll('.reveal');
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach((entry, i) => {
-    if (entry.isIntersecting) {
-      setTimeout(() => {
-        entry.target.classList.add('visible');
-      }, 100);
-      observer.unobserve(entry.target);
-    }
-  });
-}, { threshold: 0.1 });
-
-reveals.forEach(el => observer.observe(el));
-
-// ── FORM SUBMIT ──
-function handleSubmit(e, successId) {
+const cursor=document.getElementById('cursor'),ring=document.getElementById('cursorRing');
+document.addEventListener('mousemove',(e)=>{cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';setTimeout(()=>{ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';},80);});
+const reveals=document.querySelectorAll('.reveal');
+const obs=new IntersectionObserver((entries)=>{entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('visible');obs.unobserve(entry.target);}});},{threshold:0.1});
+reveals.forEach(el=>obs.observe(el));
+async function handleSubmit(e,sid,source){
   e.preventDefault();
-  const form = e.target;
-  const email = form.querySelector('input[type="email"]').value;
-  
-  // Store email (in production this would POST to your API)
-  console.log('Waitlist signup:', email);
-  
-  form.style.display = 'none';
-  const success = document.getElementById(successId);
-  success.style.display = 'block';
-  
-  // Also store in localStorage so we know they signed up
-  const signups = JSON.parse(localStorage.getItem('irie_builder_signups') || '[]');
-  signups.push({ email, timestamp: new Date().toISOString() });
-  localStorage.setItem('irie_builder_signups', JSON.stringify(signups));
+  const form=e.target;
+  const email=form.querySelector('input[type="email"]').value;
+  const btn=form.querySelector('button');
+  btn.textContent='Adding...';
+  btn.disabled=true;
+  try{
+    const res=await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,source})
+    });
+    const data=await res.json();
+    form.style.display='none';
+    document.getElementById(sid).style.display='block';
+  }catch(err){
+    form.style.display='none';
+    document.getElementById(sid).style.display='block';
+  }
 }
-
-// ── PARALLAX ON SCROLL ──
-window.addEventListener('scroll', () => {
-  const scrollY = window.scrollY;
-  const orb1 = document.querySelector('.orb-1');
-  const orb2 = document.querySelector('.orb-2');
-  if (orb1) orb1.style.transform = `translateY(${scrollY * 0.15}px)`;
-  if (orb2) orb2.style.transform = `translateY(${scrollY * -0.1}px)`;
+window.addEventListener('scroll',()=>{
+  const s=window.scrollY;
+  const o1=document.querySelector('.orb-1'),o2=document.querySelector('.orb-2');
+  if(o1)o1.style.transform='translateY('+s*0.15+'px)';
+  if(o2)o2.style.transform='translateY('+s*-0.1+'px)';
 });
 </script>
 </body>
