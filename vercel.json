@@ -1,0 +1,7 @@
+{
+  "github": {
+    "autoJobCancelation": false,
+    "enabled": true
+  },
+  "ignoreCommand": "exit 1"
+}
