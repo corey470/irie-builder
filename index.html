@@ -15,7 +15,7 @@ body{background:var(--black);color:var(--cream);font-family:'Syne',sans-serif;fo
 body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");pointer-events:none;z-index:100;opacity:0.5}
 .cursor{position:fixed;width:12px;height:12px;background:var(--gold);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);transition:width 0.3s,height 0.3s;mix-blend-mode:difference}
 .cursor-ring{position:fixed;width:40px;height:40px;border:1px solid rgba(201,168,76,0.4);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:all 0.15s ease-out}
-nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to bottom,rgba(8,8,8,0.9),transparent)}
+nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to bottom,rgba(8,8,8,0.92),transparent)}
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.2rem;font-weight:700;color:var(--gold);letter-spacing:0.05em;text-decoration:none;opacity:0;animation:fadeDown 1s 0.5s ease forwards}
 .nav-tag{font-size:11px;letter-spacing:0.25em;text-transform:uppercase;color:var(--muted);opacity:0;animation:fadeDown 1s 0.7s ease forwards}
 .hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:10rem 3rem 6rem;position:relative;overflow:hidden}
@@ -39,6 +39,8 @@ nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:fle
 .waitlist-btn:hover{background:var(--gold-light);transform:translateX(3px)}
 .form-note{margin-top:1rem;font-size:11px;letter-spacing:0.1em;color:rgba(242,237,228,0.25);opacity:0;animation:fadeUp 1s 1.2s ease forwards}
 .success-msg{display:none;padding:1rem 1.5rem;background:var(--gold-dim);border:1px solid var(--border);color:var(--gold);font-size:13px;letter-spacing:0.05em;max-width:480px}
+
+/* ---- SECTIONS ---- */
 .section-question{padding:10rem 3rem;position:relative;border-top:1px solid var(--border)}
 .question-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.6;margin-bottom:4rem}
 .question-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);max-width:900px;margin-bottom:6rem}
@@ -92,15 +94,45 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
 .footer-link{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);text-decoration:none;transition:color 0.3s}
 .footer-link:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:rgba(242,237,228,0.2);letter-spacing:0.1em}
-/* ── CONTINUOUS MOTION ── */
-.reveal{opacity:0;transform:translateY(40px);transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1),transform 0.8s cubic-bezier(0.16,1,0.3,1)}
-.reveal.visible{opacity:1;transform:translateY(0)}
-.reveal.exiting{opacity:0;transform:translateY(-24px);transition:opacity 0.5s ease,transform 0.5s ease}
-/* Stagger children inside reveal groups */
-.modes-grid .mode-card,.feels-item{transition-delay:0s}
-.modes-grid .mode-card:nth-child(1){transition-delay:0s}
-.modes-grid .mode-card:nth-child(2){transition-delay:0.1s}
-.modes-grid .mode-card:nth-child(3){transition-delay:0.2s}
+
+/* ===== TASTEFUL VARIED TRANSITIONS ===== */
+/* Base - hidden state */
+[data-anim]{opacity:0;will-change:transform,opacity}
+
+/* Type 1: Fade up (labels, eyebrows, small text) */
+[data-anim="fade-up"]{transform:translateY(36px);transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1),transform 0.8s cubic-bezier(0.16,1,0.3,1)}
+[data-anim="fade-up"].in{opacity:1;transform:translateY(0)}
+[data-anim="fade-up"].out{opacity:0;transform:translateY(-20px);transition:opacity 0.45s ease,transform 0.45s ease}
+
+/* Type 2: Fade in only (large statements, quotes - no movement, pure fade) */
+[data-anim="fade"]{transition:opacity 1.1s ease}
+[data-anim="fade"].in{opacity:1}
+[data-anim="fade"].out{opacity:0;transition:opacity 0.5s ease}
+
+/* Type 3: Slide from left (question grid, comparison panels) */
+[data-anim="slide-left"]{transform:translateX(-40px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
+[data-anim="slide-left"].in{opacity:1;transform:translateX(0)}
+[data-anim="slide-left"].out{opacity:0;transform:translateX(20px);transition:opacity 0.4s ease,transform 0.4s ease}
+
+/* Type 4: Scale up (mode cards, grid items) */
+[data-anim="scale-up"]{transform:scale(0.94) translateY(20px);transition:opacity 0.75s cubic-bezier(0.34,1.56,0.64,1),transform 0.75s cubic-bezier(0.34,1.56,0.64,1)}
+[data-anim="scale-up"].in{opacity:1;transform:scale(1) translateY(0)}
+[data-anim="scale-up"].out{opacity:0;transform:scale(0.97) translateY(-10px);transition:opacity 0.4s ease,transform 0.4s ease}
+
+/* Type 5: Reveal line (feels items - slide from left with stagger) */
+[data-anim="line-reveal"]{transform:translateX(-24px);border-left:2px solid transparent;transition:opacity 0.7s ease,transform 0.7s cubic-bezier(0.16,1,0.3,1),border-color 0.7s ease}
+[data-anim="line-reveal"].in{opacity:1;transform:translateX(0);border-left-color:var(--gold)}
+[data-anim="line-reveal"].out{opacity:0;transform:translateX(12px);border-left-color:transparent;transition:opacity 0.35s ease,transform 0.35s ease,border-color 0.35s ease}
+
+/* Type 6: Split fade (CTA section - left comes from left, right from right) */
+[data-anim="split-left"]{transform:translateX(-30px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
+[data-anim="split-left"].in{opacity:1;transform:translateX(0)}
+[data-anim="split-left"].out{opacity:0;transform:translateX(15px);transition:opacity 0.4s ease,transform 0.4s ease}
+
+[data-anim="split-right"]{transform:translateX(30px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
+[data-anim="split-right"].in{opacity:1;transform:translateX(0)}
+[data-anim="split-right"].out{opacity:0;transform:translateX(-15px);transition:opacity 0.4s ease,transform 0.4s ease}
+
 @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:900px){.hero,.section-question,.section-feels,.section-modes,.section-north,.section-cta{padding-left:1.5rem;padding-right:1.5rem}.question-grid,.modes-grid,.section-cta{grid-template-columns:1fr}.feels-item{grid-template-columns:50px 1fr}.cursor,.cursor-ring{display:none}body{cursor:auto}.waitlist-btn,.waitlist-btn-2{cursor:pointer}nav{padding:1.5rem}}
@@ -127,41 +159,46 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   <p class="form-note">No spam. No noise. Just early access when we're ready.</p>
   <div class="text-strip"><span class="text-strip-inner">Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp; Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp;</span></div>
 </section>
+
 <section class="section-question">
-  <p class="question-label reveal">The difference</p>
-  <div class="question-grid reveal">
+  <p class="question-label" data-anim="fade-up">The difference</p>
+  <div class="question-grid" data-anim="slide-left">
     <div class="question-cell theirs"><p class="question-cell-label">Every other tool asks</p><p class="question-text">"What kind of page do you want to build?"</p></div>
     <div class="question-cell ours"><p class="question-cell-label">Irie Builder asks</p><p class="question-text">"What do you want someone to feel when they land here?"</p></div>
   </div>
-  <p class="big-statement reveal">Not a website builder.<br>A <em>creative director</em><br>powered by AI.</p>
+  <p class="big-statement" data-anim="fade">Not a website builder.<br>A <em>creative director</em><br>powered by AI.</p>
 </section>
+
 <section class="section-feels">
-  <p class="feels-label reveal">What it builds</p>
-  <div class="feels-item reveal"><span class="feels-num">01</span><h3 class="feels-title">Motion with meaning</h3><p class="feels-desc">Scroll-triggered reveals. Parallax layers. Hero video. Micro-interactions. Not decoration - narrative tools that pull people deeper into your story.</p></div>
-  <div class="feels-item reveal"><span class="feels-num">02</span><h3 class="feels-title">Story architecture</h3><p class="feels-desc">The AI decides what you see first, where the surprise lands, what the payoff feels like. Paced like a great film, not laid out like a brochure.</p></div>
-  <div class="feels-item reveal"><span class="feels-num">03</span><h3 class="feels-title">Visual atmosphere</h3><p class="feels-desc">Color temperature. Typography weight. Space vs. density. All calibrated to the emotional brief - not picked from a dropdown.</p></div>
-  <div class="feels-item reveal"><span class="feels-num">04</span><h3 class="feels-title">Your voice, everywhere</h3><p class="feels-desc">Every word written in your brand voice. Headlines, body copy, CTAs - all on-brand, all ready to publish. No placeholder text.</p></div>
-  <div class="feels-item reveal"><span class="feels-num">05</span><h3 class="feels-title">Live on your URL</h3><p class="feels-desc">Not downloaded. Not exported. Not copy-pasted. Published directly to your domain the moment you're ready. One click.</p></div>
+  <p class="feels-label" data-anim="fade-up">What it builds</p>
+  <div class="feels-item" data-anim="line-reveal" data-delay="0"><span class="feels-num">01</span><h3 class="feels-title">Motion with meaning</h3><p class="feels-desc">Scroll-triggered reveals. Parallax layers. Hero video. Micro-interactions. Not decoration - narrative tools that pull people deeper into your story.</p></div>
+  <div class="feels-item" data-anim="line-reveal" data-delay="80"><span class="feels-num">02</span><h3 class="feels-title">Story architecture</h3><p class="feels-desc">The AI decides what you see first, where the surprise lands, what the payoff feels like. Paced like a great film, not laid out like a brochure.</p></div>
+  <div class="feels-item" data-anim="line-reveal" data-delay="160"><span class="feels-num">03</span><h3 class="feels-title">Visual atmosphere</h3><p class="feels-desc">Color temperature. Typography weight. Space vs. density. All calibrated to the emotional brief - not picked from a dropdown.</p></div>
+  <div class="feels-item" data-anim="line-reveal" data-delay="240"><span class="feels-num">04</span><h3 class="feels-title">Your voice, everywhere</h3><p class="feels-desc">Every word written in your brand voice. Headlines, body copy, CTAs - all on-brand, all ready to publish. No placeholder text.</p></div>
+  <div class="feels-item" data-anim="line-reveal" data-delay="320"><span class="feels-num">05</span><h3 class="feels-title">Live on your URL</h3><p class="feels-desc">Not downloaded. Not exported. Not copy-pasted. Published directly to your domain the moment you're ready. One click.</p></div>
 </section>
+
 <section class="section-modes">
-  <p class="modes-label reveal">Three ways in</p>
-  <div class="modes-grid reveal">
-    <div class="mode-card"><div class="mode-letter">A</div><p class="mode-name">Mode A - Visionary</p><h3 class="mode-title">Describe the feeling. Walk away with the experience.</h3><p class="mode-desc">Type "warm reggae energy, summer festival, makes you want to move." Hit generate. The AI handles every decision. You approve. It goes live.</p></div>
-    <div class="mode-card"><div class="mode-letter">B</div><p class="mode-name">Mode B - Collaborator</p><h3 class="mode-title">You guide the story. It executes.</h3><p class="mode-desc">See the AI's creative decisions in real time. Swap a section, adjust the pacing, shift the emotional arc. The AI reasons with you - not just for you.</p></div>
-    <div class="mode-card"><div class="mode-letter">C</div><p class="mode-name">Mode C - Architect</p><h3 class="mode-title">You direct. It codes. You ship.</h3><p class="mode-desc">Define the structure, write the copy, specify the animations. The AI handles all the code - scroll behavior, motion choreography, responsive logic.</p></div>
+  <p class="modes-label" data-anim="fade-up">Three ways in</p>
+  <div class="modes-grid">
+    <div class="mode-card" data-anim="scale-up" data-delay="0"><div class="mode-letter">A</div><p class="mode-name">Mode A - Visionary</p><h3 class="mode-title">Describe the feeling. Walk away with the experience.</h3><p class="mode-desc">Type "warm reggae energy, summer festival, makes you want to move." Hit generate. The AI handles every decision. You approve. It goes live.</p></div>
+    <div class="mode-card" data-anim="scale-up" data-delay="120"><div class="mode-letter">B</div><p class="mode-name">Mode B - Collaborator</p><h3 class="mode-title">You guide the story. It executes.</h3><p class="mode-desc">See the AI's creative decisions in real time. Swap a section, adjust the pacing, shift the emotional arc. The AI reasons with you - not just for you.</p></div>
+    <div class="mode-card" data-anim="scale-up" data-delay="240"><div class="mode-letter">C</div><p class="mode-name">Mode C - Architect</p><h3 class="mode-title">You direct. It codes. You ship.</h3><p class="mode-desc">Define the structure, write the copy, specify the animations. The AI handles all the code - scroll behavior, motion choreography, responsive logic.</p></div>
   </div>
 </section>
+
 <section class="section-north">
   <div class="north-bg-text">ALIVE</div>
-  <blockquote class="north-quote reveal">Like a good book you can't put down - where every scroll reveals something new, and the story just keeps getting better.</blockquote>
-  <p class="north-attr reveal">The north star. Every build decision measured against this.</p>
+  <blockquote class="north-quote" data-anim="fade">Like a good book you can't put down - where every scroll reveals something new, and the story just keeps getting better.</blockquote>
+  <p class="north-attr" data-anim="fade-up">The north star. Every build decision measured against this.</p>
 </section>
+
 <section class="section-cta">
-  <div class="cta-left reveal">
+  <div class="cta-left" data-anim="split-left">
     <h2 class="cta-left-title">The web is ready<br>for something<br><em>different.</em></h2>
     <p class="cta-left-body">Everyone can build a website. The question is whether yours makes people feel something. Get early access and be among the first to build experiences that move.</p>
   </div>
-  <div class="cta-right reveal">
+  <div class="cta-right" data-anim="split-right">
     <p class="cta-right-label">Join the waitlist</p>
     <form class="waitlist-form-2" id="ctaForm" onsubmit="handleSubmit(event,'ctaSuccess','cta')">
       <input type="email" class="waitlist-input-2" placeholder="your@email.com" required>
@@ -171,6 +208,7 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
     <p class="cta-note">No spam. Early access only. Built in New Smyrna Beach, FL.</p>
   </div>
 </section>
+
 <footer>
   <span class="footer-brand">Irie Builder</span>
   <div class="footer-links">
@@ -180,6 +218,7 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   </div>
   <span class="footer-copy">&copy; 2026 Irie Builder</span>
 </footer>
+
 <script>
 const cursor=document.getElementById('cursor'),ring=document.getElementById('cursorRing');
 document.addEventListener('mousemove',(e)=>{
@@ -187,55 +226,56 @@ document.addEventListener('mousemove',(e)=>{
   setTimeout(()=>{ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';},80);
 });
 
-// ── CONTINUOUS BIDIRECTIONAL MOTION ──
-// Elements animate in from below when scrolling down
-// Elements animate out upward when scrolling back up
-// Creates the alive, looping feel on every scroll
-const reveals=document.querySelectorAll('.reveal');
-const motionObs=new IntersectionObserver((entries)=>{
-  entries.forEach(entry=>{
-    if(entry.isIntersecting){
-      entry.target.classList.add('visible');
-      entry.target.classList.remove('exiting');
+// ===== VARIED BIDIRECTIONAL ANIMATIONS =====
+const animEls = document.querySelectorAll('[data-anim]');
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const el = entry.target;
+    const delay = parseInt(el.dataset.delay || '0');
+    if (entry.isIntersecting) {
+      setTimeout(() => {
+        el.classList.add('in');
+        el.classList.remove('out');
+      }, delay);
     } else {
-      // Only exit-animate if element was previously visible
-      if(entry.target.classList.contains('visible')){
-        entry.target.classList.remove('visible');
-        entry.target.classList.add('exiting');
-        // Reset after exit animation so it can re-enter
-        setTimeout(()=>{
-          entry.target.classList.remove('exiting');
-        },600);
+      if (el.classList.contains('in')) {
+        el.classList.remove('in');
+        el.classList.add('out');
+        setTimeout(() => el.classList.remove('out'), 600);
       }
     }
   });
-},{threshold:0.12,rootMargin:'0px 0px -8% 0px'});
-reveals.forEach(el=>motionObs.observe(el));
+}, { threshold: 0.1, rootMargin: '0px 0px -6% 0px' });
 
-async function handleSubmit(e,sid,source){
-  e.preventDefault();
-  const form=e.target;
-  const email=form.querySelector('input[type="email"]').value;
-  const btn=form.querySelector('button');
-  btn.textContent='Adding...';
-  btn.disabled=true;
-  try{
-    await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,source})
-    });
-  }catch(err){}
-  form.style.display='none';
-  document.getElementById(sid).style.display='block';
-}
+animEls.forEach(el => observer.observe(el));
 
-window.addEventListener('scroll',()=>{
-  const s=window.scrollY;
-  const o1=document.querySelector('.orb-1'),o2=document.querySelector('.orb-2');
-  if(o1)o1.style.transform='translateY('+s*0.15+'px)';
-  if(o2)o2.style.transform='translateY('+s*-0.1+'px)';
+// Parallax orbs
+window.addEventListener('scroll', () => {
+  const s = window.scrollY;
+  const o1 = document.querySelector('.orb-1');
+  const o2 = document.querySelector('.orb-2');
+  if (o1) o1.style.transform = 'translateY(' + s * 0.15 + 'px)';
+  if (o2) o2.style.transform = 'translateY(' + s * -0.1 + 'px)';
 });
+
+async function handleSubmit(e, sid, source) {
+  e.preventDefault();
+  const form = e.target;
+  const email = form.querySelector('input[type="email"]').value;
+  const btn = form.querySelector('button');
+  btn.textContent = 'Adding...';
+  btn.disabled = true;
+  try {
+    await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, source })
+    });
+  } catch(err) {}
+  form.style.display = 'none';
+  document.getElementById(sid).style.display = 'block';
+}
 </script>
 </body>
 </html>
