@@ -12,6 +12,10 @@ interface GenerateRequest {
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
 }
 
+function jsonError(message: string, status: number) {
+  return NextResponse.json({ error: true, message }, { status })
+}
+
 const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder — the first website builder for brands with a vibe. You create living, breathing websites that feel ALIVE.
 
 YOUR PROCESS — start from the emotional brief, NOT from a template:
@@ -122,28 +126,35 @@ Return ONLY the complete HTML document. No markdown. No backticks. No explanatio
 The HTML must be completely self-contained — inline CSS in a <style> tag, inline JS in a <script> tag.
 The only external resources allowed are Google Fonts via <link>.
 
-QUALITY BAR: The output must feel like iriethreads.vercel.app — premium, atmospheric, alive with motion. NOT a template. An experience.`
+QUALITY BAR: The output must feel like iriethreads.vercel.app — premium, atmospheric, alive with motion. NOT a template. An experience.
+
+IMPORTANT: Be concise with CSS. Combine selectors. Use shorthand properties. Keep total output under 8000 tokens so generation completes quickly.`
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as GenerateRequest
+    let body: GenerateRequest
+    try {
+      body = (await request.json()) as GenerateRequest
+    } catch {
+      return jsonError('Invalid JSON in request body', 400)
+    }
 
     if (!body.brandName || !body.vibe || !body.colors?.primary) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+      return jsonError('Missing required fields: brandName, vibe, and colors.primary are required', 400)
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+      return jsonError('ANTHROPIC_API_KEY not configured on server', 500)
     }
 
-    const client = new Anthropic({ apiKey, timeout: 120000 })
+    const client = new Anthropic({ apiKey, timeout: 55000 })
 
     const userPrompt = `Create a complete, self-contained HTML website for this brand:
 
 Brand Name: ${body.brandName}
 Emotional Brief: ${body.vibe}
-Target Audience: ${body.audience}
+Target Audience: ${body.audience || 'general'}
 Color Palette:
   - Primary: ${body.colors.primary}
   - Accent: ${body.colors.accent}
@@ -156,26 +167,45 @@ Remember:
 - Make and document your creative decisions in an HTML comment
 - Include ALL motion features: parallax, IntersectionObserver bidirectional scroll animations, custom cursor, floating orbs, grain overlay, scrolling text strip, nav scroll behavior
 - Use 6 different transition types, never the same twice in a row
-- Two email capture forms
+- Two email capture forms with proper <label> elements
 - Fully responsive at 768px and 480px breakpoints
 - prefers-reduced-motion respected
+- Be concise with CSS — combine selectors, use shorthand
 - Output ONLY the HTML — no markdown, no backticks, no explanation`
 
     let html: string
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 12000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    })
+    try {
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
+      })
 
-    const textBlock = response.content.find(b => b.type === 'text')
-    html = textBlock?.text ?? ''
+      const textBlock = response.content.find(b => b.type === 'text')
+      html = textBlock?.text ?? ''
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown API error'
+      if (msg.includes('timeout') || msg.includes('abort') || msg.includes('ETIMEDOUT')) {
+        return jsonError('Generation timed out. The AI took too long — please try again.', 504)
+      }
+      if (msg.includes('rate_limit')) {
+        return jsonError('Rate limited by AI provider. Please wait 60 seconds and try again.', 429)
+      }
+      if (msg.includes('authentication') || msg.includes('401')) {
+        return jsonError('API key is invalid or expired. Contact support.', 401)
+      }
+      return jsonError(`AI generation failed: ${msg}`, 502)
+    }
+
+    if (!html || html.length < 100) {
+      return jsonError('AI returned an empty or invalid response. Please try again.', 502)
+    }
 
     // Strip any markdown wrapping if Claude accidentally adds it
     html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
 
-    // Extract metadata from the creative decisions comment
+    // Extract metadata from the output
     const fonts: string[] = []
     const sections: string[] = []
     const motionVocabulary: string[] = []
@@ -208,8 +238,9 @@ Remember:
       },
     })
   } catch (err: unknown) {
-    console.error('[generate] Error:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    // Catch-all: ALWAYS return valid JSON no matter what
+    console.error('[generate] Unhandled error:', err)
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred'
+    return jsonError(message, 500)
   }
 }

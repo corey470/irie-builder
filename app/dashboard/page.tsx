@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [metadata, setMetadata] = useState<Metadata | null>(null)
   const [genCount, setGenCount] = useState(0)
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
+  const [errorLog, setErrorLog] = useState<{ time: string; message: string }[]>([])
 
   /* mobile panel */
   const [mobilePanel, setMobilePanel] = useState<'form' | 'preview' | 'log'>('form')
@@ -108,12 +109,25 @@ export default function DashboardPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = await res.json()
 
-      if (!res.ok) throw new Error(data.error || 'Generation failed')
+      /* Safely parse the response — it may not be JSON if Vercel
+         itself returns a timeout/error page */
+      let data: Record<string, unknown>
+      const text = await res.text()
+      try {
+        data = JSON.parse(text)
+      } catch {
+        // Non-JSON response (Vercel error page, timeout HTML, etc.)
+        const preview = text.slice(0, 120).replace(/<[^>]*>/g, '').trim()
+        throw new Error(`Server returned non-JSON (HTTP ${res.status}): ${preview || 'empty response'}`)
+      }
 
-      setHtml(data.html)
-      setMetadata(data.metadata)
+      if (!res.ok || data.error) {
+        throw new Error((data.message as string) || (data.error as string) || `Generation failed (HTTP ${res.status})`)
+      }
+
+      setHtml(data.html as string)
+      setMetadata(data.metadata as Metadata)
       setGenCount(prev => prev + 1)
       setMobilePanel('preview')
 
@@ -122,12 +136,14 @@ export default function DashboardPage() {
         const doc = iframeRef.current.contentDocument
         if (doc) {
           doc.open()
-          doc.write(data.html)
+          doc.write(data.html as string)
           doc.close()
         }
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
+      const msg = e instanceof Error ? e.message : 'Unknown error'
+      setError(msg)
+      setErrorLog(prev => [...prev, { time: new Date().toLocaleTimeString(), message: msg }])
     } finally {
       setLoading(false)
     }
@@ -283,8 +299,18 @@ export default function DashboardPage() {
         {/* ── RIGHT PANEL: GENERATION LOG ── */}
         <aside className={`db-panel db-log ${mobilePanel === 'log' ? 'db-panel--active' : ''}`}>
           <h2 className="db-log-title">Generation Log</h2>
-          {logItems.length === 0 && (
+          {logItems.length === 0 && errorLog.length === 0 && (
             <p className="db-log-empty">Creative decisions will appear here after generation.</p>
+          )}
+          {errorLog.length > 0 && (
+            <div className="db-log-errors">
+              {errorLog.map((e, i) => (
+                <div key={i} className="db-log-error">
+                  <span className="db-log-error-time">{e.time}</span>
+                  <span className="db-log-error-msg">{e.message}</span>
+                </div>
+              ))}
+            </div>
           )}
           {logItems.map((item, i) => (
             <div key={i} className="db-log-item">
@@ -647,6 +673,30 @@ const dashboardCSS = `
     font-size: 13px;
     color: var(--muted);
     line-height: 1.6;
+  }
+  .db-log-errors {
+    margin-bottom: 16px;
+  }
+  .db-log-error {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: rgba(220, 60, 60, 0.08);
+    border: 1px solid rgba(220, 60, 60, 0.2);
+    border-radius: var(--radius);
+  }
+  .db-log-error-time {
+    font-size: 10px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .db-log-error-msg {
+    font-size: 12px;
+    color: #e88;
+    line-height: 1.5;
+    word-break: break-word;
   }
   .db-log-item {
     display: flex;
