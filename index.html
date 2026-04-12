@@ -39,8 +39,6 @@ nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:fle
 .waitlist-btn:hover{background:var(--gold-light);transform:translateX(3px)}
 .form-note{margin-top:1rem;font-size:11px;letter-spacing:0.1em;color:rgba(242,237,228,0.25);opacity:0;animation:fadeUp 1s 1.2s ease forwards}
 .success-msg{display:none;padding:1rem 1.5rem;background:var(--gold-dim);border:1px solid var(--border);color:var(--gold);font-size:13px;letter-spacing:0.05em;max-width:480px}
-
-/* ---- SECTIONS ---- */
 .section-question{padding:10rem 3rem;position:relative;border-top:1px solid var(--border)}
 .question-label{font-size:10px;letter-spacing:0.35em;text-transform:uppercase;color:var(--gold);opacity:0.6;margin-bottom:4rem}
 .question-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);max-width:900px;margin-bottom:6rem}
@@ -71,10 +69,106 @@ nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:2rem 3rem;display:fle
 .mode-name{font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:var(--gold);margin-bottom:1rem}
 .mode-title{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:var(--white);margin-bottom:1rem;line-height:1.3}
 .mode-desc{font-size:13px;line-height:1.8;color:var(--muted)}
-.section-north{padding:12rem 3rem;border-top:1px solid var(--border);text-align:center;position:relative;overflow:hidden}
-.north-bg-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:'Playfair Display',serif;font-size:20vw;font-weight:900;color:rgba(201,168,76,0.03);white-space:nowrap;pointer-events:none;letter-spacing:-0.05em}
-.north-quote{font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4vw,4rem);font-style:italic;font-weight:400;line-height:1.3;color:var(--white);max-width:900px;margin:0 auto 4rem;position:relative}
-.north-attr{font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:var(--muted);position:relative}
+
+/* ===== STAR WARS CRAWL SECTION ===== */
+.section-north{
+  padding:0;
+  border-top:1px solid var(--border);
+  position:relative;
+  overflow:hidden;
+  height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--black);
+}
+
+/* The fading mask at top and bottom — text disappears into the void */
+.section-north::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;
+  height:35%;
+  background:linear-gradient(to bottom,var(--black) 0%,transparent 100%);
+  z-index:10;
+  pointer-events:none;
+}
+.section-north::after{
+  content:'';
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:25%;
+  background:linear-gradient(to top,var(--black) 0%,transparent 100%);
+  z-index:10;
+  pointer-events:none;
+}
+
+/* Perspective stage */
+.crawl-stage{
+  position:absolute;
+  bottom:0;
+  left:0;right:0;
+  height:100%;
+  perspective:400px;
+  perspective-origin:50% 100%;
+  overflow:hidden;
+}
+
+.crawl-content{
+  position:absolute;
+  bottom:-100px;
+  left:50%;
+  transform:translateX(-50%) rotateX(22deg);
+  transform-origin:50% 100%;
+  transform-style:preserve-3d;
+  width:70%;
+  max-width:800px;
+  text-align:center;
+  animation:crawlUp 0s linear paused;
+}
+
+/* The ALIVE watermark stays flat behind */
+.north-bg-text{
+  position:absolute;
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  font-family:'Playfair Display',serif;
+  font-size:20vw;
+  font-weight:900;
+  color:rgba(201,168,76,0.025);
+  white-space:nowrap;
+  pointer-events:none;
+  letter-spacing:-0.05em;
+  z-index:1;
+}
+
+.north-quote{
+  font-family:'Playfair Display',serif;
+  font-size:clamp(1.6rem,3.5vw,3.2rem);
+  font-style:italic;
+  font-weight:400;
+  line-height:1.4;
+  color:var(--white);
+  margin-bottom:3rem;
+  position:relative;
+  z-index:2;
+}
+
+.north-attr{
+  font-size:11px;
+  letter-spacing:0.35em;
+  text-transform:uppercase;
+  color:var(--gold);
+  opacity:0.6;
+  position:relative;
+  z-index:2;
+}
+
+@keyframes crawlUp{
+  0%{transform:translateX(-50%) translateY(0) rotateX(22deg)}
+  100%{transform:translateX(-50%) translateY(-280%) rotateX(22deg)}
+}
+
 .section-cta{padding:10rem 3rem;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:6rem;align-items:center}
 .cta-left-title{font-family:'Playfair Display',serif;font-size:clamp(2.5rem,4vw,4.5rem);font-weight:700;line-height:1.1;color:var(--white);margin-bottom:2rem}
 .cta-left-title em{font-style:italic;color:var(--gold)}
@@ -95,47 +189,33 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
 .footer-link:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:rgba(242,237,228,0.2);letter-spacing:0.1em}
 
-/* ===== TASTEFUL VARIED TRANSITIONS ===== */
-/* Base - hidden state */
+/* VARIED TRANSITIONS */
 [data-anim]{opacity:0;will-change:transform,opacity}
-
-/* Type 1: Fade up (labels, eyebrows, small text) */
 [data-anim="fade-up"]{transform:translateY(36px);transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1),transform 0.8s cubic-bezier(0.16,1,0.3,1)}
 [data-anim="fade-up"].in{opacity:1;transform:translateY(0)}
 [data-anim="fade-up"].out{opacity:0;transform:translateY(-20px);transition:opacity 0.45s ease,transform 0.45s ease}
-
-/* Type 2: Fade in only (large statements, quotes - no movement, pure fade) */
 [data-anim="fade"]{transition:opacity 1.1s ease}
 [data-anim="fade"].in{opacity:1}
 [data-anim="fade"].out{opacity:0;transition:opacity 0.5s ease}
-
-/* Type 3: Slide from left (question grid, comparison panels) */
 [data-anim="slide-left"]{transform:translateX(-40px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
 [data-anim="slide-left"].in{opacity:1;transform:translateX(0)}
 [data-anim="slide-left"].out{opacity:0;transform:translateX(20px);transition:opacity 0.4s ease,transform 0.4s ease}
-
-/* Type 4: Scale up (mode cards, grid items) */
 [data-anim="scale-up"]{transform:scale(0.94) translateY(20px);transition:opacity 0.75s cubic-bezier(0.34,1.56,0.64,1),transform 0.75s cubic-bezier(0.34,1.56,0.64,1)}
 [data-anim="scale-up"].in{opacity:1;transform:scale(1) translateY(0)}
 [data-anim="scale-up"].out{opacity:0;transform:scale(0.97) translateY(-10px);transition:opacity 0.4s ease,transform 0.4s ease}
-
-/* Type 5: Reveal line (feels items - slide from left with stagger) */
 [data-anim="line-reveal"]{transform:translateX(-24px);border-left:2px solid transparent;transition:opacity 0.7s ease,transform 0.7s cubic-bezier(0.16,1,0.3,1),border-color 0.7s ease}
 [data-anim="line-reveal"].in{opacity:1;transform:translateX(0);border-left-color:var(--gold)}
 [data-anim="line-reveal"].out{opacity:0;transform:translateX(12px);border-left-color:transparent;transition:opacity 0.35s ease,transform 0.35s ease,border-color 0.35s ease}
-
-/* Type 6: Split fade (CTA section - left comes from left, right from right) */
 [data-anim="split-left"]{transform:translateX(-30px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
 [data-anim="split-left"].in{opacity:1;transform:translateX(0)}
 [data-anim="split-left"].out{opacity:0;transform:translateX(15px);transition:opacity 0.4s ease,transform 0.4s ease}
-
 [data-anim="split-right"]{transform:translateX(30px);transition:opacity 0.9s cubic-bezier(0.16,1,0.3,1),transform 0.9s cubic-bezier(0.16,1,0.3,1)}
 [data-anim="split-right"].in{opacity:1;transform:translateX(0)}
 [data-anim="split-right"].out{opacity:0;transform:translateX(-15px);transition:opacity 0.4s ease,transform 0.4s ease}
 
 @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
-@media(max-width:900px){.hero,.section-question,.section-feels,.section-modes,.section-north,.section-cta{padding-left:1.5rem;padding-right:1.5rem}.question-grid,.modes-grid,.section-cta{grid-template-columns:1fr}.feels-item{grid-template-columns:50px 1fr}.cursor,.cursor-ring{display:none}body{cursor:auto}.waitlist-btn,.waitlist-btn-2{cursor:pointer}nav{padding:1.5rem}}
+@media(max-width:900px){.hero,.section-question,.section-feels,.section-modes,.section-cta{padding-left:1.5rem;padding-right:1.5rem}.question-grid,.modes-grid,.section-cta{grid-template-columns:1fr}.feels-item{grid-template-columns:50px 1fr}.cursor,.cursor-ring{display:none}body{cursor:auto}.waitlist-btn,.waitlist-btn-2{cursor:pointer}nav{padding:1.5rem}.crawl-content{width:90%}}
 </style>
 </head>
 <body>
@@ -159,7 +239,6 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   <p class="form-note">No spam. No noise. Just early access when we're ready.</p>
   <div class="text-strip"><span class="text-strip-inner">Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp; Alive &nbsp;&#183;&nbsp; Motion &nbsp;&#183;&nbsp; Story &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Experience &nbsp;&#183;&nbsp;</span></div>
 </section>
-
 <section class="section-question">
   <p class="question-label" data-anim="fade-up">The difference</p>
   <div class="question-grid" data-anim="slide-left">
@@ -168,7 +247,6 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   </div>
   <p class="big-statement" data-anim="fade">Not a website builder.<br>A <em>creative director</em><br>powered by AI.</p>
 </section>
-
 <section class="section-feels">
   <p class="feels-label" data-anim="fade-up">What it builds</p>
   <div class="feels-item" data-anim="line-reveal" data-delay="0"><span class="feels-num">01</span><h3 class="feels-title">Motion with meaning</h3><p class="feels-desc">Scroll-triggered reveals. Parallax layers. Hero video. Micro-interactions. Not decoration - narrative tools that pull people deeper into your story.</p></div>
@@ -177,7 +255,6 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   <div class="feels-item" data-anim="line-reveal" data-delay="240"><span class="feels-num">04</span><h3 class="feels-title">Your voice, everywhere</h3><p class="feels-desc">Every word written in your brand voice. Headlines, body copy, CTAs - all on-brand, all ready to publish. No placeholder text.</p></div>
   <div class="feels-item" data-anim="line-reveal" data-delay="320"><span class="feels-num">05</span><h3 class="feels-title">Live on your URL</h3><p class="feels-desc">Not downloaded. Not exported. Not copy-pasted. Published directly to your domain the moment you're ready. One click.</p></div>
 </section>
-
 <section class="section-modes">
   <p class="modes-label" data-anim="fade-up">Three ways in</p>
   <div class="modes-grid">
@@ -187,10 +264,15 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   </div>
 </section>
 
-<section class="section-north">
+<!-- STAR WARS CRAWL SECTION -->
+<section class="section-north" id="northStar">
   <div class="north-bg-text">ALIVE</div>
-  <blockquote class="north-quote" data-anim="fade">Like a good book you can't put down - where every scroll reveals something new, and the story just keeps getting better.</blockquote>
-  <p class="north-attr" data-anim="fade-up">The north star. Every build decision measured against this.</p>
+  <div class="crawl-stage">
+    <div class="crawl-content" id="crawlContent">
+      <blockquote class="north-quote">Like a good book you can't put down - where every scroll reveals something new, and the story just keeps getting better.</blockquote>
+      <p class="north-attr">The north star. Every build decision measured against this.</p>
+    </div>
+  </div>
 </section>
 
 <section class="section-cta">
@@ -208,7 +290,6 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
     <p class="cta-note">No spam. Early access only. Built in New Smyrna Beach, FL.</p>
   </div>
 </section>
-
 <footer>
   <span class="footer-brand">Irie Builder</span>
   <div class="footer-links">
@@ -218,7 +299,6 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
   </div>
   <span class="footer-copy">&copy; 2026 Irie Builder</span>
 </footer>
-
 <script>
 const cursor=document.getElementById('cursor'),ring=document.getElementById('cursorRing');
 document.addEventListener('mousemove',(e)=>{
@@ -226,55 +306,73 @@ document.addEventListener('mousemove',(e)=>{
   setTimeout(()=>{ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';},80);
 });
 
-// ===== VARIED BIDIRECTIONAL ANIMATIONS =====
-const animEls = document.querySelectorAll('[data-anim]');
-
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    const el = entry.target;
-    const delay = parseInt(el.dataset.delay || '0');
-    if (entry.isIntersecting) {
-      setTimeout(() => {
-        el.classList.add('in');
-        el.classList.remove('out');
-      }, delay);
+// ===== VARIED BIDIRECTIONAL TRANSITIONS =====
+const animEls=document.querySelectorAll('[data-anim]');
+const observer=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    const el=entry.target;
+    const delay=parseInt(el.dataset.delay||'0');
+    if(entry.isIntersecting){
+      setTimeout(()=>{el.classList.add('in');el.classList.remove('out');},delay);
     } else {
-      if (el.classList.contains('in')) {
+      if(el.classList.contains('in')){
         el.classList.remove('in');
         el.classList.add('out');
-        setTimeout(() => el.classList.remove('out'), 600);
+        setTimeout(()=>el.classList.remove('out'),600);
       }
     }
   });
-}, { threshold: 0.1, rootMargin: '0px 0px -6% 0px' });
+},{threshold:0.1,rootMargin:'0px 0px -6% 0px'});
+animEls.forEach(el=>observer.observe(el));
 
-animEls.forEach(el => observer.observe(el));
+// ===== STAR WARS CRAWL =====
+// Driven by scroll position within the section
+// The crawl moves with the page scroll, tied to how far into the section you are
+const northSection=document.getElementById('northStar');
+const crawlContent=document.getElementById('crawlContent');
 
-// Parallax orbs
-window.addEventListener('scroll', () => {
-  const s = window.scrollY;
-  const o1 = document.querySelector('.orb-1');
-  const o2 = document.querySelector('.orb-2');
-  if (o1) o1.style.transform = 'translateY(' + s * 0.15 + 'px)';
-  if (o2) o2.style.transform = 'translateY(' + s * -0.1 + 'px)';
-});
+function updateCrawl(){
+  if(!northSection||!crawlContent) return;
+  const rect=northSection.getBoundingClientRect();
+  const sectionH=northSection.offsetHeight;
+  const windowH=window.innerHeight;
+  // progress: 0 when section top hits bottom of viewport, 1 when section bottom leaves top
+  const progress=Math.max(0,Math.min(1,(-rect.top)/(sectionH)));
+  // Crawl from bottom (0%) to top (-300%) based on scroll progress
+  const crawlY=progress*-320;
+  crawlContent.style.transform='translateX(-50%) translateY('+crawlY+'%) rotateX(22deg)';
+  // Fade in as section enters, full opacity through middle
+  const entryProgress=Math.max(0,Math.min(1,(windowH-rect.top)/windowH));
+  northSection.style.opacity=Math.min(1,entryProgress*2).toString();
+}
 
-async function handleSubmit(e, sid, source) {
+window.addEventListener('scroll',()=>{
+  updateCrawl();
+  const s=window.scrollY;
+  const o1=document.querySelector('.orb-1');
+  const o2=document.querySelector('.orb-2');
+  if(o1)o1.style.transform='translateY('+s*0.15+'px)';
+  if(o2)o2.style.transform='translateY('+s*-0.1+'px)';
+},{ passive:true });
+
+updateCrawl();
+
+async function handleSubmit(e,sid,source){
   e.preventDefault();
-  const form = e.target;
-  const email = form.querySelector('input[type="email"]').value;
-  const btn = form.querySelector('button');
-  btn.textContent = 'Adding...';
-  btn.disabled = true;
-  try {
-    await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, source })
+  const form=e.target;
+  const email=form.querySelector('input[type="email"]').value;
+  const btn=form.querySelector('button');
+  btn.textContent='Adding...';
+  btn.disabled=true;
+  try{
+    await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,source})
     });
-  } catch(err) {}
-  form.style.display = 'none';
-  document.getElementById(sid).style.display = 'block';
+  }catch(err){}
+  form.style.display='none';
+  document.getElementById(sid).style.display='block';
 }
 </script>
 </body>
