@@ -92,8 +92,15 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
 .footer-link{font-size:11px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);text-decoration:none;transition:color 0.3s}
 .footer-link:hover{color:var(--gold)}
 .footer-copy{font-size:11px;color:rgba(242,237,228,0.2);letter-spacing:0.1em}
-.reveal{opacity:0;transform:translateY(40px);transition:opacity 0.8s ease,transform 0.8s ease}
+/* ── CONTINUOUS MOTION ── */
+.reveal{opacity:0;transform:translateY(40px);transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1),transform 0.8s cubic-bezier(0.16,1,0.3,1)}
 .reveal.visible{opacity:1;transform:translateY(0)}
+.reveal.exiting{opacity:0;transform:translateY(-24px);transition:opacity 0.5s ease,transform 0.5s ease}
+/* Stagger children inside reveal groups */
+.modes-grid .mode-card,.feels-item{transition-delay:0s}
+.modes-grid .mode-card:nth-child(1){transition-delay:0s}
+.modes-grid .mode-card:nth-child(2){transition-delay:0.1s}
+.modes-grid .mode-card:nth-child(3){transition-delay:0.2s}
 @keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeDown{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:900px){.hero,.section-question,.section-feels,.section-modes,.section-north,.section-cta{padding-left:1.5rem;padding-right:1.5rem}.question-grid,.modes-grid,.section-cta{grid-template-columns:1fr}.feels-item{grid-template-columns:50px 1fr}.cursor,.cursor-ring{display:none}body{cursor:auto}.waitlist-btn,.waitlist-btn-2{cursor:pointer}nav{padding:1.5rem}}
@@ -175,10 +182,36 @@ footer{padding:3rem;border-top:1px solid var(--border);display:flex;justify-cont
 </footer>
 <script>
 const cursor=document.getElementById('cursor'),ring=document.getElementById('cursorRing');
-document.addEventListener('mousemove',(e)=>{cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';setTimeout(()=>{ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';},80);});
+document.addEventListener('mousemove',(e)=>{
+  cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';
+  setTimeout(()=>{ring.style.left=e.clientX+'px';ring.style.top=e.clientY+'px';},80);
+});
+
+// ── CONTINUOUS BIDIRECTIONAL MOTION ──
+// Elements animate in from below when scrolling down
+// Elements animate out upward when scrolling back up
+// Creates the alive, looping feel on every scroll
 const reveals=document.querySelectorAll('.reveal');
-const obs=new IntersectionObserver((entries)=>{entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add('visible');obs.unobserve(entry.target);}});},{threshold:0.1});
-reveals.forEach(el=>obs.observe(el));
+const motionObs=new IntersectionObserver((entries)=>{
+  entries.forEach(entry=>{
+    if(entry.isIntersecting){
+      entry.target.classList.add('visible');
+      entry.target.classList.remove('exiting');
+    } else {
+      // Only exit-animate if element was previously visible
+      if(entry.target.classList.contains('visible')){
+        entry.target.classList.remove('visible');
+        entry.target.classList.add('exiting');
+        // Reset after exit animation so it can re-enter
+        setTimeout(()=>{
+          entry.target.classList.remove('exiting');
+        },600);
+      }
+    }
+  });
+},{threshold:0.12,rootMargin:'0px 0px -8% 0px'});
+reveals.forEach(el=>motionObs.observe(el));
+
 async function handleSubmit(e,sid,source){
   e.preventDefault();
   const form=e.target;
@@ -187,19 +220,16 @@ async function handleSubmit(e,sid,source){
   btn.textContent='Adding...';
   btn.disabled=true;
   try{
-    const res=await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist',{
+    await fetch('https://povyxvsxnudcnemltbrg.supabase.co/functions/v1/irie-builder-waitlist',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({email,source})
     });
-    const data=await res.json();
-    form.style.display='none';
-    document.getElementById(sid).style.display='block';
-  }catch(err){
-    form.style.display='none';
-    document.getElementById(sid).style.display='block';
-  }
+  }catch(err){}
+  form.style.display='none';
+  document.getElementById(sid).style.display='block';
 }
+
 window.addEventListener('scroll',()=>{
   const s=window.scrollY;
   const o1=document.querySelector('.orb-1'),o2=document.querySelector('.orb-2');
