@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Healing Collective - Conscious Cannabis Culture</title>
+    <meta name="description" content="A wellness-focused cannabis community embracing plant-based healing and intentional living.">
+    <meta property="og:title" content="The Healing Collective">
+    <meta property="og:description" content="A wellness-focused cannabis community embracing plant-based healing and intentional living.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600&family=Syne:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- CREATIVE DECISIONS
+Typography: Cormorant Garamond (display) + Syne (body) — elegant serif paired with modern geometric sans creates balance of wisdom and progress
+Motion vocabulary: fade-up, fade, slide-left, scale-up, line-reveal, split — carefully sequenced for calm, meditative flow
+Color temperature: warm neutral with fresh green — earthy background with life-affirming accent supports healing narrative
+Section order: hero → pain/stress → solution/approach → healing modes → community → testimonials → CTA — emotional journey from struggle to transformation
+Visual density: generous spacing — ample whitespace supports calm, intentional atmosphere
+Atmosphere: grain + orbs + soft parallax — subtle textures create organic, natural environment without overwhelming
+-->
+
+<style>
+    :root {
+        --primary: #0D1A0A;
+        --accent: #7CAF5E;
+        --background: #F5F2EC;
+        --text: #0D1A0A;
+        --text-secondary: rgba(13, 26, 10, 0.7);
+        --border: rgba(124, 175, 94, 0.2);
+    }
+
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Syne', sans-serif;
+        background-color: var(--background);
+        color: var(--text);
+        overflow-x: hidden;
+        line-height: 1.6;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 2rem;
+    }
+
+    /* Typography */
+    h1, h2, h3 {
+        font-family: 'Cormorant Garamond', serif;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    h1 { font-size: clamp(2.5rem, 6vw, 4rem); }
+    h2 { font-size: clamp(2rem, 4vw, 3rem); }
+    h3 { font-size: clamp(1.5rem, 3vw, 2rem); }
+    p { font-size: clamp(1rem, 2vw, 1.125rem); }
+
+    /* Grain Overlay */
+    .grain-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        opacity: 0.04;
+        z-index: 1000;
+        background: 
+            radial-gradient(circle at 20% 80%, transparent 50%, rgba(124, 175, 94, 0.1)),
+            radial-gradient(circle at 80% 20%, transparent 50%, rgba(124, 175, 94, 0.1)),
+            repeating-conic-gradient(from 0deg at 50% 50%, transparent 0deg, rgba(13, 26, 10, 0.03) 1deg, transparent 2deg);
+    }
+
+    /* Floating Orbs */
+    .floating-orbs {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .orb {
+        position: absolute;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.06;
+        filter: blur(40px);
+    }
+
+    .orb:nth-child(1) {
+        width: 300px;
+        height: 300px;
+        top: 20%;
+        right: -10%;
+        animation: float1 80s ease-in-out infinite;
+    }
+
+    .orb:nth-child(2) {
+        width: 250px;
+        height: 250px;
+        bottom: 30%;
+        left: -5%;
+        animation: float2 90s ease-in-out infinite;
+    }
+
+    .orb:nth-child(3) {
+        width: 200px;
+        height: 200px;
+        top: 60%;
+        right: 20%;
+        animation: float3 70s ease-in-out infinite;
+    }
+
+    @keyframes float1 {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        33% { transform: translate(-50px, -30px) scale(1.1); }
+        66% { transform: translate(30px, -20px) scale(0.9); }
+    }
+
+    @keyframes float2 {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(40px, 60px) scale(1.2); }
+    }
+
+    @keyframes float3 {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        25% { transform: translate(-30px, 40px) scale(0.8); }
+        75% { transform: translate(20px, -50px) scale(1.1); }
+    }
+
+    /* Custom Cursor */
+    @media (pointer: fine) {
+        body {
+            cursor: none;
+        }
+
+        .cursor {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        .cursor-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            transition: none;
+        }
+
+        .cursor-ring {
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+            opacity: 0.6;
+        }
+
+        a:hover ~ .cursor .cursor-ring,
+        button:hover ~ .cursor .cursor-ring {
+            transform: translate(-50%, -50%) scale(1.5);
+        }
+    }
+
+    /* Navigation */
+    nav {
+        position: fixed;
+        top: 0;
+        width: 100%;
+        padding: 1rem 0;
+        z-index: 100;
+        transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+        backdrop-filter: blur(10px);
+    }
+
+    nav.scrolled {
+        background: rgba(245, 242, 236, 0.95);
+        border-bottom: 1px solid var(--border);
+    }
+
+    nav .container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .logo {
+        font-family: 'Cormorant Garamond', serif;
+        font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+        font-weight: 600;
+        color: var(--text);
+        text-decoration: none;
+    }
+
+    .nav-links {
+        display: flex;
+        list-style: none;
+        gap: 2rem;
+    }
+
+    .nav-links a {
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+
+    .nav-links a:hover {
+        color: var(--accent);
+    }
+
+    .nav-links a::after {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        width: 0;
+        height: 1px;
+        background: var(--accent);
+        transition: width 0.3s ease;
+    }
+
+    .nav-links a:hover::after {
+        width: 100%;
+    }
+
+    /* Sections */
+    section {
+        padding: clamp(4rem, 10vw, 8rem) 0;
+        position: relative;
+        z-index: 2;
+    }
+
+    .hero {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        position: relative;
+        background: linear-gradient(135deg, var(--background) 0%, rgba(124, 175, 94, 0.05) 100%);
+    }
+
+    .hero-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="10" cy="10" r="0.5" fill="%23537D40" opacity="0.1"/><circle cx="30" cy="25" r="0.3" fill="%237CAF5E" opacity="0.1"/><circle cx="50" cy="40" r="0.4" fill="%23537D40" opacity="0.08"/><circle cx="70" cy="60" r="0.2" fill="%237CAF5E" opacity="0.12"/><circle cx="85" cy="80" r="0.6" fill="%23537D40" opacity="0.06"/><circle cx="25" cy="75" r="0.3" fill="%237CAF5E" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>') center/400px;
+        z-index: -1;
+        will-change: transform;
+    }
+
+    .scrolling-text {
+        position: absolute;
+        top: 15%;
+        left: 0;
+        width: 100%;
+        overflow: hidden;
+        opacity: 0.1;
+        z-index: 1;
+    }
+
+    .scrolling-text-inner {
+        display: flex;
+        animation: scroll-text 40s linear infinite;
+        font-family: 'Cormorant Garamond', serif;
+        font-size: clamp(1rem, 2vw, 1.5rem);
+        font-weight: 300;
+        color: var(--accent);
+    }
+
+    .scrolling-text span {
+        padding-right: 4rem;
+        white-space: nowrap;
+    }
+
+    @keyframes scroll-text {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+    }
+
+    .hero-content {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 4rem;
+        position: relative;
+        z-index: 3;
+    }
+
+    .hero-text {
+        max-width: 600px;
+    }
+
+    .hero h1 {
+        margin-bottom: 1.5rem;
+        color: var(--text);
+    }
+
+    .hero p {
+        margin-bottom: 2rem;
+        color: var(--text-secondary);
+        font-size: clamp(1.125rem, 2.5vw, 1.25rem);
+    }
+
+    .email-form {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        max-width: 400px;
+    }
+
+    .email-form input {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.8);
+        font-family: 'Syne', sans-serif;
+        font-size: 1rem;
+        min-height: 44px;
+    }
+
+    .email-form input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(124, 175, 94, 0.2);
+    }
+
+    .btn {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-family: 'Syne', sans-serif;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        min-height: 44px;
+        font-size: 1rem;
+    }
+
+    .btn:hover {
+        background: #6B9B51;
+        transform: translateY(-2px);
+    }
+
+    .hero-image {
+        width: 300px;
+        height: 400px;
+        background: linear-gradient(135deg, rgba(124, 175, 94, 0.1) 0%, rgba(124, 175, 94, 0.05) 100%);
+        border-radius: 16px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .hero-image::before {
+        content: '';
+        position: absolute;
+        top: 20%;
+        left: 20%;
+        width: 60%;
+        height: 60%;
+        background: var(--accent);
+        opacity: 0.3;
+        border-radius: 50%;
+        filter: blur(60px);
+    }
+
+    .pain-section {
+        background: rgba(13, 26, 10, 0.02);
+    }
+
+    .pain-content {
+        text-align: center;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .pain-content h2 {
+        margin-bottom: 2rem;
+        color: var(--text);
+    }
+
+    .pain-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin-top: 3rem;
+    }
+
+    .pain-item {
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+
+    .pain-item h3 {
+        margin-bottom: 1rem;
+        color: var(--accent);
+    }
+
+    .solution-section {
+        position: relative;
+    }
+
+    .solution-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4rem;
+        align-items: center;
+    }
+
+    .solution-text h2 {
+        margin-bottom: 2rem;
+    }
+
+    .solution-text p {
+        margin-bottom: 1.5rem;
+        color: var(--text-secondary);
+    }
+
+    .solution-visual {
+        height: 400px;
+        background: linear-gradient(45deg, rgba(124, 175, 94, 0.1) 0%, rgba(124, 175, 94, 0.05) 100%);
+        border-radius: 16px;
+        position: relative;
+    }
+
+    .modes-section {
+        background: rgba(124, 175, 94, 0.03);
+    }
+
+    .modes-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-top: 3rem;
+    }
+
+    .mode-card {
+        background: rgba(255, 255, 255, 0.6);
+        padding: 2rem;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        transition: transform 0.3s ease;
+    }
+
+    .mode-card:hover {
+        transform: translateY(-4px);
+    }
+
+    .mode-card h3 {
+        margin-bottom: 1rem;
+        color: var(--accent);
+    }
+
+    .community-section {
+        text-align: center;
+    }
+
+    .community-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 2rem;
+        margin: 3rem 0;
+    }
+
+    .stat {
+        text-align: center;
+    }
+
+    .stat-number {
+        font-family: 'Cormorant Garamond', serif;
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 600;
+        color: var(--accent);
+        display: block;
+    }
+
+    .testimonials-section {
+        background: rgba(13, 26, 10, 0.02);
+    }
+
+    .testimonials-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+        margin-top: 3rem;
+    }
+
+    .testimonial {
+        background: rgba(255, 255, 255, 0.8);
+        padding: 2rem;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+    }
+
+    .testimonial p {
+        font-style: italic;
+        margin-bottom: 1rem;
+        color: var(--text-secondary);
+    }
+
+    .testimonial-author {
+        font-weight: 500;
+        color: var(--accent);
+    }
+
+    .cta-section {
+        text-align: center;
+        background: linear-gradient(135deg, rgba(124, 175, 94, 0.05) 0%, rgba(124, 175, 94, 0.1) 100%);
+    }
+
+    .cta-content {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .cta-content h2 {
+        margin-bottom: 1rem;
+    }
+
+    .cta-content p {
+        margin-bottom: 2rem;
+        color: var(--text-secondary);
+    }
+
+    .cta-form {
+        max-width: 400px;
+        margin: 0 auto;
+    }
+
+    footer {
+        background: var(--primary);
+        color: rgba(255, 255, 255, 0.8);
+        text-align: center;
+        padding: 2rem 0;
+    }
+
+    footer .container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    footer a {
+        color: rgba(255, 255, 255, 0.6);
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+
+    footer a:hover {
+        color: var(--accent);
+    }
+
+    /* Reveal Line Animation */
+    .reveal-line {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .reveal-line::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--background);
+        transform: scaleX(1);
+        transform-origin: left;
+        transition: transform 1.2s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .reveal-line.animate::after {
+        transform: scaleX(0);
+    }
+
+    /* Split Animation */
+    .split-container {
+        overflow: hidden;
+        position: relative;
+    }
+
+    .split-left,
+    .split-right {
+        transition: transform 1s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    .split-left {
+        transform: translateX(-100%);
+    }
+
+    .split-right {
+        transform: translateX(100%);
+    }
+
+    .split-container.animate .split-left,
+    .split-container.animate .split-right {
+        transform: translateX(0);
+    }
+
+    /* Animation classes */
+    [data-animate] {
+        transition: all 1s cubic-bezier(0.25, 1, 0.5, 1);
+    }
+
+    [data-animate="fade-up"] {
+        opacity: 0;
+        transform: translateY(32px);
+    }
+
+    [data-animate="fade"] {
+        opacity: 0;
+    }
+
+    [data-animate="slide-left"] {
+        opacity: 0;
+        transform: translateX(-48px);
+    }
+
+    [data-animate="scale-up"] {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+
+    [data-animate].animate {
+        opacity: 1;
+        transform: translateY(0) translateX(0) scale(1);
+    }
+
+    /* Mobile Styles */
+    @media (max-width: 768px) {
+        .container {
+            padding: 0 1rem;
+        }
+
+        .nav-links {
+            display: none;
+        }
+
+        .hero-content {
+            grid-template-columns: 1fr;
+            text-align: center;
+            gap: 2rem;
+        }
+
+        .hero-image {
+            width: 250px;
+            height: 300px;
+            margin: 0 auto;
+        }
+
+        .solution-content {
+            grid-template-columns: 1fr;
+            gap: 2rem;
+        }
+
+        .email-form {
+            flex-direction: column;
+            max-width: 100%;
+        }
+
+        .modes-grid,
+        .testimonials-grid,
+        .pain-grid,
+        .community-stats {
+            grid-template-columns: 1fr;
+        }
+
+        footer .container {
+            flex-direction: column;
+            text-align: center;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .email-form input,
+        .btn {
+            min-height: 48px;
+        }
+
+        section {
+            padding: clamp(2rem, 8vw, 4rem) 0;
+        }
+    }
+
+    /* Reduced Motion */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+
+        .hero-bg {
+            transform: none !important;
+        }
+
+        .floating-orbs {
+            display: none;
+        }
+
+        .scrolling-text {
+            display: none;
+        }
+
+        .cursor {
+            display: none !important;
+        }
+    }
+</style>
+
+<div class="grain-overlay"></div>
+<div class="floating-orbs">
+    <div class="orb"></div>
+    <div class="orb"></div>
+    <div class="orb"></div>
+</div>
+
+<div class="cursor">
+    <div class="cursor-dot"></div>
+    <div class="cursor-ring"></div>
+</div>
+
+<nav>
+    <div class="container">
+        <a href="#" class="logo">The Healing Collective</a>
+        <ul class="nav-links">
+            <li><a href="#approach">Approach</a></li>
+            <li><a href="#community">Community</a></li>
+            <li><a href="#testimonials">Stories</a></li>
+            <li><a href="#join">Join</a></li>
+        </ul>
+    </div>
+</nav>
+
+<section class="hero">
+    <div class="hero-bg"></div>
+    <div class="scrolling-text">
+        <div class="scrolling-text-inner">
+            <span>healing • plant medicine • wellness • consciousness • community • intentional living • holistic health • healing • plant medicine • wellness • consciousness • community • intentional living • holistic health •</span>
+        </div>
+    </div>
+    <div class="container">
+        <div class="hero-content" data-animate="fade-up">
+            <div class="hero-text">
+                <h1>Conscious Cannabis for Intentional Healing</h1>
+                <p>Join a community that views cannabis as sacred plant medicine, supporting your journey toward holistic wellness and mindful living.</p>
+                <form class="email-form">
+                    <input type="email" placeholder="Your email address" required aria-label="Email address">
+                    <button type="submit" class="btn">Begin Journey</button>
+                </form>
+            </div>
+            <div class="hero-image"></div>
+        </div>
+    </div>
+</section>
+
+<section class="pain-section" id="stress">
+    <div class="container">
+        <div class="pain-content" data-animate="fade">
+            <h2>Modern Life Disconnects Us From Natural Healing</h2>
+            <p>In a world of synthetic solutions and quick fixes, we've forgotten the wisdom of plant-based healing and intentional wellness practices.</p>
+            <div class="pain-grid">
+                <div class="pain-item" data-animate="slide-left" data-delay="0">
+                    <h3>Chronic Stress</h3>
+                    <p>Daily pressures without natural outlets for release and restoration.</p>
+                </div>
+                <div class="pain-item" data-animate="slide-left" data-delay="120">
+                    <h3>Pharmaceutical Dependence</h3>
+                    <p>Relying on synthetic medications instead of exploring plant-based alternatives.</p>
+                </div>
+                <div class="pain-item" data-animate="slide-left" data-delay="240">
+                    <h3>Stigma & Isolation</h3>
+                    <p>Feeling alone in your healing journey without community support.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="solution-section" id="approach">
+    <div class="container">
+        <div class="solution-content">
+            <div class="solution-text" data-animate="scale-up">
+                <h2>A Different Path to Wellness</h2>
+                <p>We believe cannabis is a sacred plant ally that can support deep healing when approached with intention, respect, and community wisdom.</p>
+                <p>Our collective combines ancient plant knowledge with modern wellness practices, creating a holistic approach to health that honors both tradition and innovation.</p>
+                <p>This isn't about getting high—it's about getting whole.</p>
+            </div>
+            <div class="solution-visual reveal-line" data-animate="line-reveal">
+                <div class="split-container">
+                    <div class="split-left"></div>
+                    <div class="split-right"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="modes-section" id="healing">
+    <div class="container">
+        <div class="modes-content" data-animate="fade-up">
+            <h2 style="text-align: center; margin-bottom: 2rem;">Healing Modalities</h2>
+            <p style="text-align: center; max-width: 700px; margin: 0 auto 3rem; color: var(--text-secondary);">Discover various ways cannabis can support your wellness journey through mindful practices and intentional use.</p>
+            <div class="modes-grid">
+                <div class="mode-card" data-animate="fade" data-delay="0">
+                    <h3>Microdosing Mastery</h3>
+                    <p>Learn the art of low-dose cannabis for daily wellness, mood regulation, and enhanced creativity without impairment.</p>
+                </div>
+                <div class="mode-card" data-animate="fade" data-delay="100">
+                    <h3>Meditation & Mindfulness</h3>
+                    <p>Guided practices combining cannabis with meditation for deeper introspection and spiritual connection.</p>
+                </div>
+                <div class="mode-card" data-animate="fade" data-delay="200">
+                    <h3>Pain Management</h3>
+                    <p>Natural approaches to chronic pain relief using various cannabis preparations and consumption methods.</p>
+                </div>
+                <div class="mode-card" data-animate="slide-left" data-delay="300">
+                    <h3>Sleep Restoration</h3>
+                    <p>Targeted protocols for improving sleep quality and establishing healthy sleep rhythms with plant medicine.</p>
+                </div>
+                <div class="mode-card" data-animate="slide-left" data-delay="400">
+                    <h3>Anxiety Support</h3>
+                    <p>Gentle, natural approaches to managing anxiety and stress through mindful cannabis use and community support.</p>
+                </div>
+                <div class="mode-card" data-animate="slide-left" data-delay="500">
+                    <h3>Creative Flow</h3>
+                    <p>Unlock your creative potential through intentional use combined with artistic practices and expression.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="community-section" id="community">
+    <div class="container">
+        <div class="community-content" data-animate="scale-up">
+            <h2>A Conscious Community</h2>
+            <p style="max-width: 600px; margin: 0 auto 2rem; color: var(--text-secondary);">Join thousands of wellness-focused individuals on a shared journey toward healing and wholeness.</p>
+            <div class="community-stats">
+                <div class="stat" data-animate="fade-up" data-delay="0">
+                    <span class="stat-number">2,400+</span>
+                    <p>Community Members</p>
+                </div>
+                <div class="stat" data-animate="fade-up" data-delay="120">
+                    <span class="stat-number">150+</span>
+                    <p>Healing Circles</p>
+                </div>
+                <div class="stat" data-animate="fade-up" data-delay="240">
+                    <span class="stat-number">50+</span>
+                    <p>Expert Guides</p>
+                </div>
+                <div class="stat" data-animate="fade-up" data-delay="360">
+                    <span class="stat-number">95%</span>
+                    <p>Report Improved Wellness</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="testimonials-section" id="testimonials">
+    <div class="container">
+        <div class="testimonials-content" data-animate="fade">
+            <h2 style="text-align: center; margin-bottom: 3rem;">Healing Stories</h2>
+            <div class="testimonials-grid">
+                <div class="testimonial" data-animate="scale-up" data-delay="0">
+                    <p>"This community taught me that cannabis could be medicine, not just recreation. My chronic pain has improved dramatically with their mindful approach."</p>
+                    <div class="testimonial-author">— Sarah M., Chronic Pain Warrior</div>
+                </div>
+                <div class="testimonial" data-animate="scale-up" data-delay="120">
+                    <p>"I was skeptical at first, but the microdosing protocols have transformed my anxiety management. I feel more present and peaceful than ever."</p>
+                    <div class="testimonial-author">— David K., Anxiety Recovery</div>
+                </div>
+                <div class="testimonial" data-animate="scale-up" data-delay="240">
+                    <p>"The meditation practices combined with plant medicine have opened doorways to self-understanding I never knew existed. Deeply grateful."</p>
+                    <div class="testimonial-author">— Maria L., Spiritual Seeker</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="cta-section" id="join">
+    <div class="container">
+        <div class="cta-content" data-animate="fade-up">
+            <h2>Begin Your Healing Journey</h2>
+            <p>Join our conscious community and discover how plant medicine can support your path to wellness, wisdom, and wholeness.</p>
+            <form class="cta-form email-form">
+                <input type="email" placeholder="Enter your email address" required aria-label="Email address">
+                <button type="submit" class="btn">Join The Collective</button>
+            </form>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <div>
+            <p>&copy; 2024 The Healing Collective. All rights reserved.</p>
+        </div>
+        <div style="display: flex; gap: 2rem;">
+            <a href="#privacy">Privacy</a>
+            <a href="#terms">Terms</a>
+            <a href="#contact">Contact</a>
+        </div>
+    </div>
+</footer>
+
+<script>
+// Custom Cursor
+if (window.matchMedia('(pointer: fine)').matches) {
+    const cursor = document.querySelector('.cursor');
+    const cursorDot = document.querySelector('.cursor-dot');
+    const cursorRing = document.querySelector('.cursor-ring');
+    
+    let mouseX = 0, mouseY = 0;
+    let ringX = 0, ringY = 0;
+    
+    document.addEventListener('mousemove', (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        
+        cursorDot.style.transform = `translate(${mouseX}px, ${mouseY}px) translate(-50%, -50%)`;
+    });
+    
+    function animateRing() {
+        const dx = mouseX - ringX;
+        const dy = mouseY - ringY;
+        
+        ringX += dx * 0.15;
+        ringY += dy * 0.15;
+        
+        cursorRing.style.transform = `translate(${ringX}px, ${ringY}px) translate(-50%, -50%)`;
+        
+        requestAnimationFrame(animateRing);
+    }
+    
+    animateRing();
+}
+
+// Parallax Hero Background
+const heroBackground = document.querySelector('.hero-bg');
+if (heroBackground) {
+    window.addEventListener('scroll', () => {
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            const scrolled = window.pageYOffset;
+            const rate = scrolled * -0.3;
+            heroBackground.style.transform = `translate3d(0, ${rate}px, 0)`;
+        }
+    });
+}
+
+// Navigation Scroll Effect
+const nav = document.querySelector('nav');
+const navLinks = document.querySelectorAll('.nav-links a');
+
+window.addEventListener('scroll', () => {
+    if (window.pageYOffset > 80) {
+        nav.classList.add('scrolled');
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            navLinks.forEach((link, index) => {
+                link.style.transform = `translateX(${-2 + index}px)`;
+            });
+        }
+    } else {
+        nav.classList.remove('scrolled');
+        navLinks.forEach(link => {
+            link.style.transform = 'translateX(0)';
+        });
+    }
+});
+
+// Intersection Observer for Animations
+const observerOptions = {
+    threshold: 0.1,
+    rootMargin: '0px 0px -50px 0px'
+};
+
+const observer = new IntersectionObserver((entries) => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    
+    entries.forEach(entry => {
+        const element = entry.target;
+        
+        if (entry.isIntersecting) {
+            // Animate in
+            setTimeout(() => {
+                element.classList.add('animate');
+            }, parseInt(element.dataset.delay) || 0);
+        } else {
+            // Reset animation when out of view
+            element.classList.remove('animate');
+        }
+    });
+}, observerOptions);
+
+// Observe all animated elements
+document.querySelectorAll('[data-animate]').forEach(el => {
+    observer.observe(el);
+});
+
+// Special handling for reveal-line animation
+document.querySelectorAll('.reveal-line').forEach(el => {
+    observer.observe(el);
+});
+
+// Special handling for split animation
+document.querySelectorAll('.split-container').forEach(el => {
+    observer.observe(el);
+});
+
+// Form Submissions
+document.querySelectorAll('form').forEach(form => {
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = form.querySelector('input[type="email"]').value;
+        
+        // Here you would typically send the email to your backend
+        console.log('Email submitted:', email);
+        
+        // Show success feedback
+        const button = form.querySelector('button');
+        const originalText = button.textContent;
+        button.textContent = 'Thank You!';
+        button.style.background = '#6B9B51';
+        
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.style.background = '';
+            form.reset();
+        }, 2000);
+    });
+});
+
+// Smooth Scrolling for Navigation Links
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            const offsetTop = target.offsetTop - 80;
+            window.scrollTo({
+                top: offsetTop,
+                behavior: 'smooth'
+            });
+        }
+    });
+});
+
+// Enhanced hover effects for interactive elements
+document.querySelectorAll('.btn, .mode-card, .testimonial').forEach(element => {
+    element.addEventListener('mouseenter', function() {
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            this.style.transform += ' scale(1.02)';
+        }
+    });
+    
+    element.addEventListener('mouseleave', function() {
+        this.style.transform = this.style.transform.replace(' scale(1.02)', '');
+    });
+});
+</script>
+
+</body>
+</html>

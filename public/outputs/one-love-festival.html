@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>One Love Festival - Unity Through Music</title>
+    <meta property="og:title" content="One Love Festival">
+    <meta property="og:description" content="Experience the ultimate celebration of reggae, Caribbean culture, and unity through music">
+    
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:wght@400&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* CREATIVE DECISIONS
+        Typography: DM Serif Display + Syne — classic serif elegance meets modern sans versatility for festival vibes
+        Motion vocabulary: fade-up, slide-left, scale-up, fade, line-reveal, split — each serves different content types
+        Color temperature: warm — golden yellows and deep browns evoke summer warmth and Caribbean sunset
+        Section order: hero → lineup → about → venue → tickets → sponsors → CTA — natural festival discovery journey
+        Visual density: generous spacing — let the energy breathe with ample whitespace
+        Atmosphere: grain + orbs + scrolling text — creates festival buzz and movement
+        */
+        
+        :root {
+            --primary: #1A0A00;
+            --accent: #FFB400;
+            --background: #0D1A0A;
+            --text-light: #F5F5F0;
+            --transition: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        .visually-hidden {
+            position: absolute;
+            clip: rect(0, 0, 0, 0);
+            height: 1px;
+            width: 1px;
+            overflow: hidden;
+        }
+        
+        body {
+            font-family: 'Syne', sans-serif;
+            background: var(--background);
+            color: var(--text-light);
+            overflow-x: hidden;
+            cursor: none;
+        }
+        
+        @media (pointer: coarse) {
+            body {
+                cursor: default;
+            }
+        }
+        
+        /* Custom Cursor */
+        @media (pointer: fine) {
+            .cursor {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 8px;
+                height: 8px;
+                background: var(--accent);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 10000;
+                transform: translate(-50%, -50%);
+                transition: none;
+            }
+            
+            .cursor-ring {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 36px;
+                height: 36px;
+                border: 1px solid var(--accent);
+                border-radius: 50%;
+                pointer-events: none;
+                z-index: 9999;
+                transform: translate(-50%, -50%);
+                transition: all 0.3s var(--transition);
+                opacity: 0.6;
+            }
+        }
+        
+        /* Grain Texture */
+        .grain {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            opacity: 0.04;
+            pointer-events: none;
+            z-index: 1000;
+            background-image: 
+                radial-gradient(circle at 20% 80%, transparent 50%, rgba(255, 180, 0, 0.3) 100%),
+                radial-gradient(circle at 80% 20%, transparent 50%, rgba(255, 180, 0, 0.3) 100%),
+                radial-gradient(circle at 40% 40%, transparent 50%, rgba(26, 10, 0, 0.4) 100%);
+            animation: grain 8s steps(10) infinite;
+        }
+        
+        @keyframes grain {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(-1px, 1px); }
+            20% { transform: translate(1px, 0px); }
+            30% { transform: translate(-2px, -1px); }
+            40% { transform: translate(1px, -2px); }
+            50% { transform: translate(-1px, 2px); }
+            60% { transform: translate(2px, 1px); }
+            70% { transform: translate(-2px, 0px); }
+            80% { transform: translate(1px, 2px); }
+            90% { transform: translate(-1px, -1px); }
+        }
+        
+        /* Floating Orbs */
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, var(--accent), transparent);
+            opacity: 0.06;
+            filter: blur(40px);
+            pointer-events: none;
+        }
+        
+        .orb-1 {
+            width: 300px;
+            height: 300px;
+            top: 10%;
+            right: 10%;
+            animation: float-1 70s linear infinite;
+        }
+        
+        .orb-2 {
+            width: 200px;
+            height: 200px;
+            bottom: 20%;
+            left: 15%;
+            animation: float-2 90s linear infinite;
+        }
+        
+        .orb-3 {
+            width: 400px;
+            height: 400px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: float-3 60s linear infinite;
+        }
+        
+        @keyframes float-1 {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(100px, -50px) rotate(90deg); }
+            50% { transform: translate(-50px, -100px) rotate(180deg); }
+            75% { transform: translate(-100px, 50px) rotate(270deg); }
+            100% { transform: translate(0, 0) rotate(360deg); }
+        }
+        
+        @keyframes float-2 {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(-80px, 120px) rotate(120deg); }
+            66% { transform: translate(120px, -80px) rotate(240deg); }
+            100% { transform: translate(0, 0) rotate(360deg); }
+        }
+        
+        @keyframes float-3 {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            20% { transform: translate(-30%, -70%) rotate(72deg); }
+            40% { transform: translate(-70%, -30%) rotate(144deg); }
+            60% { transform: translate(-70%, -70%) rotate(216deg); }
+            80% { transform: translate(-30%, -30%) rotate(288deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 1rem 0;
+            background: rgba(13, 26, 10, 0);
+            backdrop-filter: blur(0px);
+            transition: all 0.5s var(--transition);
+        }
+        
+        nav.scrolled {
+            background: rgba(13, 26, 10, 0.95);
+            backdrop-filter: blur(20px);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(1.5rem, 3vw, 2rem);
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 400;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            color: var(--text-light);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s var(--transition);
+            position: relative;
+        }
+        
+        .nav-links a:hover {
+            color: var(--accent);
+        }
+        
+        .nav-links a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+        
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+        }
+        
+        /* Scrolling Text Strip */
+        .scrolling-text {
+            position: absolute;
+            top: 15%;
+            left: 0;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .scrolling-content {
+            display: inline-block;
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(3rem, 8vw, 6rem);
+            color: var(--accent);
+            opacity: 0.1;
+            animation: scroll-left 20s linear infinite;
+        }
+        
+        @keyframes scroll-left {
+            from { transform: translateX(100%); }
+            to { transform: translateX(-100%); }
+        }
+        
+        /* Animation Classes */
+        [data-animate] {
+            opacity: 0;
+            transition: all 0.8s var(--transition);
+        }
+        
+        [data-animate="fade-up"] {
+            transform: translateY(32px);
+        }
+        
+        [data-animate="fade-up"].animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        [data-animate="slide-left"] {
+            transform: translateX(-48px);
+        }
+        
+        [data-animate="slide-left"].animate {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        
+        [data-animate="scale-up"] {
+            transform: scale(0.94);
+        }
+        
+        [data-animate="scale-up"].animate {
+            opacity: 1;
+            transform: scale(1);
+        }
+        
+        [data-animate="fade"] {
+            opacity: 0;
+        }
+        
+        [data-animate="fade"].animate {
+            opacity: 1;
+        }
+        
+        [data-animate="line-reveal"] {
+            transform: scaleX(0);
+            transform-origin: left center;
+        }
+        
+        [data-animate="line-reveal"].animate {
+            opacity: 1;
+            transform: scaleX(1);
+        }
+        
+        [data-animate="split"] .split-left {
+            transform: translateX(-100px);
+            opacity: 0;
+            transition: all 0.8s var(--transition);
+        }
+        
+        [data-animate="split"] .split-right {
+            transform: translateX(100px);
+            opacity: 0;
+            transition: all 0.8s var(--transition);
+        }
+        
+        [data-animate="split"].animate .split-left,
+        [data-animate="split"].animate .split-right {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        
+        [data-delay="1"] { transition-delay: 0.1s; }
+        [data-delay="2"] { transition-delay: 0.2s; }
+        [data-delay="3"] { transition-delay: 0.3s; }
+        [data-delay="4"] { transition-delay: 0.4s; }
+        
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        section {
+            padding: clamp(4rem, 10vw, 8rem) 0;
+            position: relative;
+        }
+        
+        /* Hero */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--background) 0%, var(--primary) 100%);
+        }
+        
+        .hero-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 120%;
+            height: 120%;
+            background: radial-gradient(circle at center, rgba(255, 180, 0, 0.1) 0%, transparent 70%);
+            will-change: transform;
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 10;
+        }
+        
+        .hero h1 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(3rem, 8vw, 8rem);
+            line-height: 0.9;
+            color: var(--accent);
+            margin-bottom: 2rem;
+        }
+        
+        .hero-subtitle {
+            font-size: clamp(1.2rem, 3vw, 2rem);
+            margin-bottom: 3rem;
+            opacity: 0.9;
+        }
+        
+        .hero-form {
+            display: flex;
+            gap: 1rem;
+            max-width: 400px;
+            margin-bottom: 2rem;
+        }
+        
+        .hero-form input {
+            flex: 1;
+            padding: 1rem;
+            border: 2px solid var(--accent);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+            border-radius: 8px;
+            font-size: 1rem;
+            min-height: 44px;
+        }
+        
+        .hero-form input::placeholder {
+            color: rgba(245, 245, 240, 0.6);
+        }
+        
+        .hero-form input:focus {
+            outline: none;
+            border-color: var(--text-light);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn {
+            background: var(--accent);
+            color: var(--primary);
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s var(--transition);
+            min-height: 44px;
+        }
+        
+        .btn:hover {
+            background: var(--text-light);
+            transform: translateY(-2px);
+        }
+        
+        .btn:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+        
+        @media (max-width: 480px) {
+            .hero-form {
+                flex-direction: column;
+            }
+        }
+        
+        /* Lineup */
+        .lineup {
+            background: var(--primary);
+        }
+        
+        .lineup h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+        
+        .lineup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .artist-card {
+            background: rgba(255, 180, 0, 0.1);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            border: 1px solid rgba(255, 180, 0, 0.2);
+        }
+        
+        .artist-name {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        
+        .artist-time {
+            font-size: 1.1rem;
+            opacity: 0.8;
+        }
+        
+        @media (max-width: 768px) {
+            .lineup-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* About */
+        .about-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+        
+        .about h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            margin-bottom: 2rem;
+        }
+        
+        .about p {
+            font-size: 1.2rem;
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+        
+        .about-image {
+            background: linear-gradient(45deg, var(--accent), var(--primary));
+            aspect-ratio: 4/3;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'DM Serif Display', serif;
+            font-size: 2rem;
+            color: var(--background);
+        }
+        
+        @media (max-width: 768px) {
+            .about-content {
+                grid-template-columns: 1fr;
+                gap: 2rem;
+            }
+        }
+        
+        /* Venue */
+        .venue {
+            background: var(--primary);
+        }
+        
+        .venue h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+        
+        .venue-info {
+            text-align: center;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .venue-name {
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        
+        .venue-address {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        
+        .venue-date {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(1.8rem, 4vw, 2.5rem);
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        
+        /* Tickets */
+        .tickets h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+        
+        .ticket-tiers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+        
+        .ticket-card {
+            background: rgba(255, 180, 0, 0.1);
+            border: 2px solid var(--accent);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .ticket-name {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.5rem;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        
+        .ticket-price {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        
+        .ticket-features {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+        
+        .ticket-features li {
+            margin-bottom: 0.5rem;
+            opacity: 0.9;
+        }
+        
+        @media (max-width: 768px) {
+            .ticket-tiers {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* Sponsors */
+        .sponsors {
+            background: var(--primary);
+        }
+        
+        .sponsors h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+        
+        .sponsors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            align-items: center;
+        }
+        
+        .sponsor-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            aspect-ratio: 3/2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        @media (max-width: 768px) {
+            .sponsors-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        /* CTA Section */
+        .cta {
+            text-align: center;
+            background: linear-gradient(135deg, var(--background) 0%, var(--primary) 100%);
+        }
+        
+        .cta h2 {
+            font-family: 'DM Serif Display', serif;
+            font-size: clamp(2.5rem, 6vw, 4rem);
+            color: var(--accent);
+            margin-bottom: 2rem;
+        }
+        
+        .cta p {
+            font-size: 1.3rem;
+            margin-bottom: 3rem;
+            opacity: 0.9;
+        }
+        
+        .cta-form {
+            display: flex;
+            gap: 1rem;
+            max-width: 500px;
+            margin: 0 auto 3rem auto;
+            justify-content: center;
+        }
+        
+        .cta-form input {
+            flex: 1;
+            padding: 1.2rem;
+            border: 2px solid var(--accent);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-light);
+            border-radius: 8px;
+            font-size: 1.1rem;
+            min-height: 44px;
+        }
+        
+        .cta-form input::placeholder {
+            color: rgba(245, 245, 240, 0.6);
+        }
+        
+        .cta-form input:focus {
+            outline: none;
+            border-color: var(--text-light);
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-large {
+            background: var(--accent);
+            color: var(--primary);
+            border: none;
+            padding: 1.2rem 3rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s var(--transition);
+            min-height: 44px;
+        }
+        
+        .btn-large:hover {
+            background: var(--text-light);
+            transform: translateY(-2px);
+        }
+        
+        .btn-large:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+        
+        @media (max-width: 480px) {
+            .cta-form {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+        
+        /* Footer */
+        footer {
+            background: var(--primary);
+            padding: 3rem 0;
+            text-align: center;
+            border-top: 1px solid rgba(255, 180, 0, 0.2);
+        }
+        
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+        
+        .footer-logo {
+            font-family: 'DM Serif Display', serif;
+            font-size: 1.5rem;
+            color: var(--accent);
+        }
+        
+        .footer-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        
+        .footer-links a {
+            color: var(--text-light);
+            text-decoration: none;
+            transition: color 0.3s var(--transition);
+        }
+        
+        .footer-links a:hover {
+            color: var(--accent);
+        }
+        
+        .footer-links a:focus {
+            outline: 2px solid var(--accent);
+            outline-offset: 4px;
+        }
+        
+        .footer-bottom {
+            opacity: 0.6;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .footer-content {
+                flex-direction: column;
+                gap: 2rem;
+            }
+            
+            .footer-links {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+        }
+        
+        /* Reduced Motion */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+            
+            .hero-bg,
+            .orb,
+            .grain,
+            .scrolling-content {
+                animation: none !important;
+            }
+            
+            [data-animate] {
+                opacity: 1 !important;
+                transform: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Custom Cursor -->
+    <div class="cursor"></div>
+    <div class="cursor-ring"></div>
+    
+    <!-- Grain Texture -->
+    <div class="grain"></div>
+    
+    <!-- Floating Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-container">
+            <a href="#" class="logo">One Love Festival</a>
+            <ul class="nav-links">
+                <li><a href="#lineup">Lineup</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#venue">Venue</a></li>
+                <li><a href="#tickets">Tickets</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <!-- Hero Section -->
+    <section class="hero" data-animate="fade-up">
+        <div class="hero-bg" id="hero-bg"></div>
+        <div class="scrolling-text">
+            <div class="scrolling-content">ONE LOVE • UNITY • MUSIC • JOY • REGGAE • CARIBBEAN • FESTIVAL • ONE LOVE • UNITY • MUSIC • JOY • REGGAE • CARIBBEAN • FESTIVAL • </div>
+        </div>
+        <div class="container">
+            <div class="hero-content">
+                <h1 data-delay="1">One Love<br>Festival</h1>
+                <p class="hero-subtitle" data-delay="2">Experience the ultimate celebration of reggae, Caribbean culture, and unity through music</p>
+                <form class="hero-form" data-delay="3">
+                    <label for="hero-email" class="visually-hidden">Email Address</label>
+                    <input type="email" id="hero-email" placeholder="Enter your email" required>
+                    <button type="submit" class="btn">Get Updates</button>
+                </form>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Lineup Section -->
+    <section class="lineup" id="lineup" data-animate="slide-left">
+        <div class="container">
+            <h2>Festival Lineup</h2>
+            <div class="lineup-grid">
+                <div class="artist-card" data-delay="1">
+                    <div class="artist-name">Bob Marley Tribute Band</div>
+                    <div class="artist-time">Saturday 8:00 PM</div>
+                </div>
+                <div class="artist-card" data-delay="2">
+                    <div class="artist-name">Steel Pulse</div>
+                    <div class="artist-time">Saturday 6:00 PM</div>
+                </div>
+                <div class="artist-card" data-delay="3">
+                    <div class="artist-name">Third World</div>
+                    <div class="artist-time">Saturday 4:00 PM</div>
+                </div>
+                <div class="artist-card" data-delay="4">
+                    <div class="artist-name">Caribbean Collective</div>
+                    <div class="artist-time">Sunday 7:00 PM</div>
+                </div>
+                <div class="artist-card" data-delay="1">
+                    <div class="artist-name">Island Vibes DJ Set</div>
+                    <div class="artist-time">Sunday 5:00 PM</div>
+                </div>
+                <div class="artist-card" data-delay="2">
+                    <div class="artist-name">Roots & Culture Band</div>
+                    <div class="artist-time">Sunday 3:00 PM</div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- About Section -->
+    <section class="about" id="about" data-animate="scale-up">
+        <div class="container">
+            <div class="about-content">
+                <div class="split-left">
+                    <h2>One Love, One Heart</h2>
+                    <p>Join us for two days of incredible music, vibrant culture, and the spirit of unity that defines the Caribbean community.</p>
+                    <p>Our festival celebrates the rich heritage of reggae music and its message of love, peace, and togetherness. Experience authentic Caribbean food, art, and the warmest community you'll ever find.</p>
+                    <p>From sunset to sunrise, let the rhythm move your soul and connect with thousands of fellow music lovers in this unforgettable celebration.</p>
+                </div>
+                <div class="split-right">
+                    <div class="about-image">Festival Vibes</div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Venue Section -->
+    <section class="venue" id="venue" data-animate="fade">
+        <div class="container">
+            <h2>Venue & Date</h2>
+            <div class="venue-info">
+                <div class="venue-name">Sunset Beach Park</div>
+                <div class="venue-address">
+                    1234 Ocean Drive<br>
+                    Miami Beach, FL 33139<br>
+                    United States
+                </div>
+                <div class="venue-date">July 15-16, 2024</div>
+                <p>Right on the beach with stunning ocean views and palm trees swaying to the rhythm. The perfect backdrop for a weekend of Caribbean culture and reggae music.</p>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Tickets Section -->
+    <section class="tickets" id="tickets" data-animate="line-reveal">
+        <div class="container">
+            <h2>Festival Tickets</h2>
+            <div class="ticket-tiers">
+                <div class="ticket-card" data-delay="1">
+                    <div class="ticket-name">General Admission</div>
+                    <div class="ticket-price">$75</div>
+                    <ul class="ticket-features">
+                        <li>2-Day Festival Access</li>
+                        <li>All Performances</li>
+                        <li>Food & Vendor Areas</li>
+                        <li>Beach Access</li>
+                    </ul>
+                    <button class="btn">Buy Now</button>
+                </div>
+                <div class="ticket-card" data-delay="2">
+                    <div class="ticket-name">VIP Experience</div>
+                    <div class="ticket-price">$150</div>
+                    <ul class="ticket-features">
+                        <li>Premium Viewing Area</li>
+                        <li>Complimentary Drinks</li>
+                        <li>VIP Restrooms</li>
+                        <li>Artist Meet & Greet</li>
+                        <li>Festival Merchandise</li>
+                    </ul>
+                    <button class="btn">Buy Now</button>
+                </div>
+                <div class="ticket-card" data-delay="3">
+                    <div class="ticket-name">Weekend Pass</div>
+                    <div class="ticket-price">$200</div>
+                    <ul class="ticket-features">
+                        <li>All VIP Benefits</li>
+                        <li>Camping Access</li>
+                        <li>Exclusive Beach Party</li>
+                        <li>Photography Package</li>
+                        <li>Welcome Gift Bag</li>
+                    </ul>
+                    <button class="btn">Buy Now</button>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Sponsors Section -->
+    <section class="sponsors" data-animate="split">
+        <div class="container">
+            <h2 class="split-left">Our Sponsors</h2>
+            <div class="sponsors-grid split-right">
+                <div class="sponsor-card" data-delay="1">Island Records</div>
+                <div class="sponsor-card" data-delay="2">Tropical Beverages</div>
+                <div class="sponsor-card" data-delay="3">Caribbean Airlines</div>
+                <div class="sponsor-card" data-delay="4">Reggae Radio</div>
+                <div class="sponsor-card" data-delay="1">Beach Resort</div>
+                <div class="sponsor-card" data-delay="2">Music Equipment Co</div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section -->
+    <section class="cta" data-animate="fade-up">
+        <div class="container">
+            <h2>Don't Miss Out</h2>
+            <p>Be the first to know about artist announcements, early bird tickets, and exclusive festival updates</p>
+            <form class="cta-form">
+                <label for="cta-email" class="visually-hidden">Email Address for Updates</label>
+                <input type="email" id="cta-email" placeholder="Your email address" required>
+                <button type="submit" class="btn-large">Join the Movement</button>
+            </form>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-logo">One Love Festival</div>
+                <ul class="footer-links">
+                    <li><a href="#">About</a></li>
+                    <li><a href="#">Contact</a></li>
+                    <li><a href="#">Privacy</a></li>
+                    <li><a href="#">Terms</a></li>
+                </ul>
+            </div>
+            <div class="footer-bottom">
+                © 2024 One Love Festival. All rights reserved.
+            </div>
+        </div>
+    </footer>
+    
+    <script>
+        // Custom Cursor
+        if (window.matchMedia('(pointer: fine)').matches) {
+            const cursor = document.querySelector('.cursor');
+            const cursorRing = document.querySelector('.cursor-ring');
+            let mouseX = 0;
+            let mouseY = 0;
+            let ringX = 0;
+            let ringY = 0;
+            
+            document.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                cursor.style.left = mouseX + 'px';
+                cursor.style.top = mouseY + 'px';
+            });
+            
+            function animateRing() {
+                ringX += (mouseX - ringX) * 0.1;
+                ringY += (mouseY - ringY) * 0.1;
+                cursorRing.style.left = ringX + 'px';
+                cursorRing.style.top = ringY + 'px';
+                requestAnimationFrame(animateRing);
+            }
+            animateRing();
+        }
+        
+        // Parallax Background
+        const heroBg = document.getElementById('hero-bg');
+        if (heroBg) {
+            window.addEventListener('scroll', () => {
+                const scrolled = window.pageYOffset;
+                const rate = scrolled * -0.3;
+                heroBg.style.transform = `translate3d(0, ${rate}px, 0)`;
+            });
+        }
+        
+        // Navigation Scroll Effect
+        const nav = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 80) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        });
+        
+        // Intersection Observer for Animations
+        const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate');
+                } else {
+                    entry.target.classList.remove('animate');
+                }
+            });
+        }, observerOptions);
+        
+        // Observe all animated elements
+        document.querySelectorAll('[data-animate]').forEach(el => {
+            observer.observe(el);
+        });
+        
+        // Form Handlers
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const email = form.querySelector('input[type="email"]').value;
+                alert(`Thank you! We'll send updates to ${email}`);
+                form.reset();
+            });
+        });
+    </script>
+</body>
+</html>

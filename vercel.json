@@ -1,7 +1,10 @@
 {
+  "framework": "nextjs",
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" }
+  ],
   "github": {
     "autoJobCancelation": false,
     "enabled": true
-  },
-  "ignoreCommand": "exit 1"
+  }
 }

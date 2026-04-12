@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#080808"/>
+  <!-- grain texture lines -->
+  <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="4" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter>
+  <rect width="1200" height="630" filter="url(#grain)" opacity="0.04"/>
+  <!-- gold border accent -->
+  <rect x="60" y="60" width="1080" height="510" fill="none" stroke="#C9A84C" stroke-width="1" opacity="0.3"/>
+  <!-- ALIVE watermark -->
+  <text x="600" y="380" font-family="Georgia,serif" font-size="260" font-weight="900" fill="#C9A84C" opacity="0.04" text-anchor="middle" letter-spacing="-8">ALIVE</text>
+  <!-- eyebrow -->
+  <text x="600" y="220" font-family="Arial,sans-serif" font-size="14" fill="#C9A84C" opacity="0.7" text-anchor="middle" letter-spacing="6">IRIE BUILDER</text>
+  <!-- main headline -->
+  <text x="600" y="310" font-family="Georgia,serif" font-size="72" font-weight="900" font-style="italic" fill="#FAFAF7" text-anchor="middle">Websites that are</text>
+  <text x="600" y="390" font-family="Georgia,serif" font-size="96" font-weight="900" font-style="italic" fill="#C9A84C" text-anchor="middle">alive.</text>
+  <!-- tagline -->
+  <text x="600" y="470" font-family="Arial,sans-serif" font-size="18" fill="rgba(242,237,228,0.5)" text-anchor="middle">The first AI that builds from feeling, not templates.</text>
+  <!-- url -->
+  <text x="600" y="545" font-family="Arial,sans-serif" font-size="14" fill="#C9A84C" opacity="0.5" text-anchor="middle" letter-spacing="3">IRIEBUILDER.COM</text>
+</svg>
