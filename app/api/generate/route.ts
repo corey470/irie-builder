@@ -41,6 +41,18 @@ const IMAGE_MAP: Record<string, string[]> = {
   beach:    ['photo-1507525428034-b723cf961d3e', 'photo-1506905925637', 'photo-1519046904884-53103b34b206'],
 }
 
+/* Content images per category for use in sections */
+const CONTENT_IMAGES: Record<string, string[]> = {
+  dj:       ['photo-1598488035467', 'photo-1571266752482', 'photo-1516450360452', 'photo-1429962714451'],
+  fashion:  ['photo-1469334031218-e382a71b716b', 'photo-1558618666-fcd25c85cd64', 'photo-1529139574466-a303027c1d8b'],
+  luxury:   ['photo-1524253482453-3fed8d2fe12b', 'photo-1441986300917-64674bd600d8', 'photo-1507003211169-0a1dd7228f2d'],
+  food:     ['photo-1424847651672-bf20a4b0982b', 'photo-1414235077428', 'photo-1504674900247-0877df9cc836'],
+  cannabis: ['photo-1464822759023-fed622ff2c3b', 'photo-1506905925637', 'photo-1518531933037-91b2f5f229cc'],
+  creative: ['photo-1558591710-4b4a1ae0f435', 'photo-1499781350541', 'photo-1542831371-29b0f74f9713'],
+  event:    ['photo-1429962714451-bb934ecdc4ec', 'photo-1492684223066-81342ee5ff30', 'photo-1540575467063-178a50c2df87'],
+  beach:    ['photo-1519046904884-53103b34b206', 'photo-1507525428034-b723cf961d3e'],
+}
+
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   dj:       ['dj', 'music', 'concert', 'festival', 'nightlife', 'electronic', 'beats', 'bokeh', 'crowd', 'stage', 'golden hour'],
   fashion:  ['fashion', 'streetwear', 'clothing', 'apparel', 'style', 'brand', 'wear', 'outfit', 'threads', 'drip'],
@@ -54,8 +66,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 const DEFAULT_IMAGE = 'photo-1493225457124'
 
-function selectHeroImage(vibe: string, heroImageDescription: string, pageType: string, mood: string, brandName: string): string {
-  const text = `${heroImageDescription} ${vibe} ${pageType} ${mood}`.toLowerCase()
+function detectCategory(text: string): string {
   let bestCategory = ''
   let bestScore = 0
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
@@ -63,9 +74,20 @@ function selectHeroImage(vibe: string, heroImageDescription: string, pageType: s
     for (const kw of keywords) { if (text.includes(kw)) score++ }
     if (score > bestScore) { bestScore = score; bestCategory = category }
   }
-  const photos = bestCategory ? IMAGE_MAP[bestCategory] : [DEFAULT_IMAGE]
+  return bestCategory || 'creative'
+}
+
+function selectHeroImage(vibe: string, heroImageDescription: string, pageType: string, mood: string, brandName: string): string {
+  const text = `${heroImageDescription} ${vibe} ${pageType} ${mood}`.toLowerCase()
+  const category = detectCategory(text)
+  const photos = IMAGE_MAP[category] || [DEFAULT_IMAGE]
   const index = (brandName || '').length % photos.length
   return `https://images.unsplash.com/${photos[index]}?auto=format&fit=crop&w=1920&q=80`
+}
+
+function getContentImageUrls(category: string): string[] {
+  const ids = CONTENT_IMAGES[category] || CONTENT_IMAGES.creative
+  return ids.map(id => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=80`)
 }
 
 /* ── Extract Creative Decisions from HTML comment ── */
@@ -74,12 +96,8 @@ function extractDecisions(html: string): CreativeDecision[] {
   const decisions: CreativeDecision[] = []
   const match = html.match(/<!--\s*CREATIVE DECISIONS\s*([\s\S]*?)-->/)
   if (!match) return decisions
-
-  const block = match[1]
-  const lines = block.split('\n').filter(l => l.trim())
-
+  const lines = match[1].split('\n').filter(l => l.trim())
   for (const line of lines) {
-    // Format: "Label: value — reason" or "Label: value"
     const m = line.match(/^\s*(?:[*\-\u2726]\s*)?([^:]+):\s*(.+)$/)
     if (!m) continue
     const label = m[1].trim()
@@ -91,90 +109,192 @@ function extractDecisions(html: string): CreativeDecision[] {
       decisions.push({ label, value: rest, reason: '' })
     }
   }
-
   return decisions
 }
 
-/* ── System Prompt (UPGRADE 3) ────────────────── */
+/* ── FIX 1: Post-process injection of guaranteed animation system ── */
 
-const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. Not a site builder — a creative director with taste, experience, and a point of view. You make decisions the user didn't ask for and wouldn't have thought of. Every generation should feel like it was made by someone who really knows what they're doing.
+const MOTION_CSS = `<style id="irie-motion-system">
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.reveal-left{opacity:0;transform:translateX(-40px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.reveal-left.visible{opacity:1;transform:translateX(0)}
+.reveal-right{opacity:0;transform:translateX(40px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.reveal-right.visible{opacity:1;transform:translateX(0)}
+.reveal-scale{opacity:0;transform:scale(.94);transition:opacity .9s cubic-bezier(.16,1,.3,1),transform .9s cubic-bezier(.16,1,.3,1)}
+.reveal-scale.visible{opacity:1;transform:scale(1)}
+.stagger>*{opacity:0;transform:translateY(20px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}
+.stagger.visible>*:nth-child(1){opacity:1;transform:translateY(0);transition-delay:0ms}
+.stagger.visible>*:nth-child(2){opacity:1;transform:translateY(0);transition-delay:100ms}
+.stagger.visible>*:nth-child(3){opacity:1;transform:translateY(0);transition-delay:200ms}
+.stagger.visible>*:nth-child(4){opacity:1;transform:translateY(0);transition-delay:300ms}
+.stagger.visible>*:nth-child(5){opacity:1;transform:translateY(0);transition-delay:400ms}
+.stagger.visible>*:nth-child(6){opacity:1;transform:translateY(0);transition-delay:500ms}
+.marquee-track{display:flex;width:max-content;animation:marquee 30s linear infinite}
+.marquee-track:hover{animation-duration:60s}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.orb{position:absolute;border-radius:50%;filter:blur(60px);opacity:.1;pointer-events:none}
+.orb-1{width:120px;height:120px;animation:float1 10s ease-in-out infinite}
+.orb-2{width:80px;height:80px;animation:float2 8s ease-in-out infinite}
+.orb-3{width:100px;height:100px;animation:float3 12s ease-in-out infinite}
+@keyframes float1{0%,100%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(30px,-20px) rotate(180deg)}}
+@keyframes float2{0%,100%{transform:translate(0,0)}50%{transform:translate(-20px,30px)}}
+@keyframes float3{0%,100%{transform:translate(0,0) rotate(0deg)}33%{transform:translate(20px,20px)}66%{transform:translate(-10px,-20px) rotate(120deg)}}
+.grain::after{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");opacity:.04;pointer-events:none;z-index:9999;animation:grain .5s steps(2) infinite}
+@keyframes grain{0%{transform:translate(0,0)}25%{transform:translate(-2%,-1%)}50%{transform:translate(1%,2%)}75%{transform:translate(-1%,1%)}100%{transform:translate(2%,-2%)}}
+#cursor{width:8px;height:8px;background:#C9A84C;border-radius:50%;position:fixed;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:transform .1s,background .2s;display:none}
+#cursor-ring{width:28px;height:28px;border:1.5px solid #C9A84C;border-radius:50%;position:fixed;pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s;display:none}
+.split-word{display:inline-block;overflow:hidden}
+.split-word span{display:inline-block;opacity:0;transform:translateY(100%);animation:wordUp .7s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes wordUp{to{opacity:1;transform:translateY(0)}}
+section{transition:background-color 1s ease}
+.ai-generated{position:relative;transition:outline .2s}
+.ai-generated:hover{outline:1px dashed rgba(201,168,76,.3);outline-offset:4px}
+@media(prefers-reduced-motion:reduce){.reveal,.reveal-left,.reveal-right,.reveal-scale{opacity:1;transform:none;transition:none}.stagger>*{opacity:1;transform:none;transition:none}.marquee-track{animation:none}.orb{animation:none}.grain::after{animation:none}.split-word span{opacity:1;transform:none;animation:none}}
+</style>`
+
+const MOTION_JS = `<script id="irie-motion-js">
+(function(){
+var dot=document.createElement('div');dot.id='cursor';
+var ring=document.createElement('div');ring.id='cursor-ring';
+document.body.appendChild(dot);document.body.appendChild(ring);
+if(window.matchMedia('(pointer:fine)').matches){dot.style.display='block';ring.style.display='block'}
+var mx=0,my=0,rx=0,ry=0,dx=0,dy=0;
+document.addEventListener('mousemove',function(e){mx=e.clientX;my=e.clientY});
+function lerp(a,b,t){return a+(b-a)*t}
+function animC(){dx=lerp(dx,mx,.15);dy=lerp(dy,my,.15);rx=lerp(rx,mx,.08);ry=lerp(ry,my,.08);dot.style.left=dx+'px';dot.style.top=dy+'px';ring.style.left=rx+'px';ring.style.top=ry+'px';requestAnimationFrame(animC)}
+animC();
+document.querySelectorAll('a,button').forEach(function(el){
+el.addEventListener('mouseenter',function(){dot.style.transform='translate(-50%,-50%) scale(0)';ring.style.width='48px';ring.style.height='48px';ring.style.background='rgba(201,168,76,.15)'});
+el.addEventListener('mouseleave',function(){dot.style.transform='translate(-50%,-50%) scale(1)';ring.style.width='28px';ring.style.height='28px';ring.style.background='transparent'});
+});
+var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.15});
+document.querySelectorAll('.reveal,.reveal-left,.reveal-right,.reveal-scale,.stagger').forEach(function(el){obs.observe(el)});
+var hero=document.querySelector('[class*="hero"],section:first-of-type');
+var heroH=hero?hero.querySelector('h1'):null;
+window.addEventListener('scroll',function(){var sy=window.scrollY;if(hero){hero.style.backgroundPositionY=(sy*.4)+'px'}if(heroH){heroH.style.transform='translateY('+(sy*.15)+'px)'}},{passive:true});
+var h1=document.querySelector('h1');
+if(h1&&!h1.querySelector('.split-word')){var w=h1.innerText.split(' ');h1.innerHTML=w.map(function(word,i){return '<span class="split-word"><span style="animation-delay:'+(i*80)+'ms">'+word+'</span></span>'}).join(' ')}
+document.querySelectorAll('section').forEach(function(sec){
+var els=sec.querySelectorAll('h2,h3,p,img,.card,[class*="card"],[class*="grid"]>*,blockquote,figure');
+var cls=['reveal','reveal-left','reveal-right','reveal-scale'];
+els.forEach(function(el,j){if(!el.classList.contains('reveal')&&!el.classList.contains('reveal-left')&&!el.classList.contains('reveal-right')&&!el.classList.contains('reveal-scale')){el.classList.add(cls[j%cls.length]);obs.observe(el)}});
+});
+if(!document.body.classList.contains('grain'))document.body.classList.add('grain');
+})();
+</script>`
+
+function postProcess(html: string): string {
+  // Inject motion CSS if missing
+  if (!html.includes('id="irie-motion-system"')) {
+    if (html.includes('</head>')) {
+      html = html.replace('</head>', MOTION_CSS + '\n</head>')
+    } else if (html.includes('</style>')) {
+      // No </head> — inject after the last </style>
+      const lastStyleIdx = html.lastIndexOf('</style>')
+      html = html.slice(0, lastStyleIdx + 8) + '\n' + MOTION_CSS + html.slice(lastStyleIdx + 8)
+    } else {
+      // No structure at all — prepend
+      html = MOTION_CSS + '\n' + html
+    }
+  }
+
+  // Inject motion JS if missing
+  if (!html.includes('id="irie-motion-js"')) {
+    if (html.includes('</body>')) {
+      html = html.replace('</body>', MOTION_JS + '\n</body>')
+    } else {
+      html += '\n' + MOTION_JS
+    }
+  }
+
+  // Ensure body has grain class
+  if (html.includes('<body') && !html.includes('class="grain"') && !html.includes("class='grain'")) {
+    html = html.replace(/<body([^>]*)>/, (match, attrs) => {
+      if (attrs.includes('class=')) {
+        return match.replace(/class="([^"]*)"/, 'class="$1 grain"')
+      }
+      return `<body${attrs} class="grain">`
+    })
+  }
+
+  return html
+}
+
+/* ── System Prompt ────────────────────────────── */
+
+const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. Not a site builder — a creative director with taste, experience, and a point of view. Every generation must look like a REAL launched website from the first second it loads.
 
 COPY RULES — absolute:
-1. If the user provided a headline — use it VERBATIM, never change a word
+1. If the user provided a headline — use it VERBATIM
 2. If the user provided an about/brand story — use it VERBATIM
 3. If the user provided a CTA — use it VERBATIM
-4. Everything else — you write it in the brand voice you decide on
-5. Copy must never sound like a template. Every word must sound like it was written specifically for this brand.
+4. Everything else — you write in the brand voice you decide on
+5. Copy must never sound like a template
 
 RAWBRIEF MODE:
-When a rawBrief is the only meaningful input — read it and extract or invent: brand name, brand type, mood, audience, color direction, typography direction, section needs. Then build a complete site as if you had received a full brief. The rawBrief is the creative seed — everything grows from it.
+When a rawBrief is the only input — extract or invent: brand name, type, mood, audience, color direction, typography, sections. Build a complete site as if you had a full brief.
 
-AUTONOMOUS CREATIVE DIRECTOR MODE:
-When input is sparse, you do NOT ask for more — you make bold, confident creative decisions.
-- Missing brand name? Invent a compelling one that fits the vibe.
-- Missing headline? Write the most compelling headline you can.
-- Missing CTA? Choose the most conversion-optimized CTA for this page type.
-- Missing audience? Infer from vibe and page type.
-- Default colors (#111111/#C9A84C/#F5F0E8)? Choose a complete 5-color palette that perfectly matches the mood.
+AUTONOMOUS MODE:
+When input is sparse, make bold decisions:
+- Invent a compelling brand name (e.g. "AXIOM" for DJ, "The Grove" for restaurant)
+- Write a compelling headline, tagline, brand story (2 paragraphs)
+- Choose conversion-optimized CTA
+- Build a 5-color palette: background, surface, text, accent, highlight
+- Add class="ai-generated" to content you invent
 
-For content you invent, add class="ai-generated" to the element.
+CONTENT MANDATE — ABSOLUTE:
+You are building a REAL website that looks fully launched. NEVER generate placeholder text. Every element must have real content.
 
-REQUIRED CREATIVE DECISIONS — you must make ALL of these independently:
+HERO SECTION — must have:
+- Full screen background image: background-image:url('[provided-unsplash-url]'); background-size:cover; background-position:center; min-height:100vh
+- Real headline text (never "Your Headline Here")
+- Real subheadline
+- Real CTA button
+- At least one .orb div for atmosphere
 
-1. TYPOGRAPHY PAIRING — choose two fonts that create tension and harmony. Not safe choices. Examples: Cormorant Garamond + Space Grotesk for luxury. Bebas Neue + Inter for streetwear. Playfair Display + DM Mono for editorial. The pairing must feel intentional and slightly unexpected.
+EVERY IMAGE — must use a real Unsplash URL. Format: https://images.unsplash.com/photo-[ID]?auto=format&fit=crop&w=800&q=80
+CONTENT_IMAGES are provided below — use them in feature cards, about sections, and atmosphere sections. NEVER output <img src=""> or <img src="placeholder">.
 
-2. COLOR HARMONY — build a complete 5-color system: background, surface, primary text, accent, highlight. The system must have contrast, depth, and personality.
+MARQUEE — must have 8-12 real brand keywords (repeated twice for seamless loop) inside a .marquee-track div.
 
-3. SECTION ARCHITECTURE — decide which sections exist and in what order based on brand type. A DJ site: hero → upcoming shows → sound samples → booking → press → footer. A restaurant: hero → philosophy → menu preview → reservation → story → footer. Not every site uses the same template.
+FEATURES/CARDS — minimum 3 cards. Each: real heading, real 1-2 sentence description, and either an inline SVG icon or a real image.
 
-4. MOTION PERSONALITY — choose one: Cinematic (slow, dramatic, large movements), Electric (fast, snappy, high energy), Organic (flowing, gentle, nature-inspired), Editorial (precise, controlled, typographic), Raw (aggressive, glitchy, punk). Apply consistently.
+ABOUT/STORY — write a compelling 2-paragraph brand story (or use user's text verbatim if provided). Never empty.
 
-5. ATMOSPHERE LAYER — choose one dominant: Grain (film texture 3-8%), Fog (radial gradients shifting on scroll), Orbs (floating blurred color spheres), Static (noise texture), Void (deep blacks with light bleed). Apply throughout.
+EMAIL CAPTURE — real heading, real subheading, input field, CTA button.
 
-6. SECTION HEADINGS — write headings that sound like this brand, not a template. Not "About Us" — maybe "The Story" or "Built Different" or "Where It Started" or "The Philosophy."
+FOOTER — brand name, tagline, copyright 2025, at least 3 nav links.
 
-7. UNEXPECTED DETAIL — add one design detail the user would never ask for. Examples: a subtle sound wave SVG pulsing in the hero for a DJ site. A rotating botanical illustration at 4% opacity for wellness. A ticker tape of press mentions for a portfolio. A live countdown for events.
+ANIMATION CLASSES — apply to every content element in the HTML:
+- First element in section: class="reveal"
+- Second element: class="reveal-left"
+- Third element: class="reveal-right"
+- Fourth element: class="reveal-scale"
+- Repeat pattern. Never two adjacent elements with same class.
+- Section containers with multiple children: add class="stagger"
+A post-processor will inject the animation CSS/JS automatically, but you MUST apply these classes in the HTML for it to work.
 
-CREATIVE DECISIONS COMMENT — announce ALL decisions at the top of the HTML:
+REQUIRED CREATIVE DECISIONS (announce in HTML comment at top):
 <!-- CREATIVE DECISIONS
-Typography: [fonts] — [why this pairing]
-Color system: [palette name you invent] — [mood it creates]
-Motion personality: [chosen] — [how it feels]
-Atmosphere: [chosen layer] — [effect]
-Sections: [actual section names in order]
-Section headings: [actual headings written]
+Typography: [fonts] — [why]
+Color system: [palette name] — [mood]
+Motion personality: [chosen] — [feel]
+Atmosphere: [layer] — [effect]
+Sections: [names in order]
+Section headings: [actual headings]
 Unexpected detail: [what and why]
-Brand voice: [adjectives for the copy voice]
-Hero treatment: [layout decision and why]
-Overall direction: [one sentence creative brief you wrote for yourself]
+Brand voice: [adjectives]
+Hero treatment: [layout and why]
+Overall direction: [one sentence brief]
 -->
 
-MOTION SYSTEM — implement based on chosen Motion Personality:
+TYPOGRAPHY: Two Google Fonts loaded via <link>. clamp() for fluid sizing.
 
-a) SCROLL ANIMATIONS via IntersectionObserver (threshold 0.15). Classes: .fade-up, .fade-in, .slide-left, .slide-right, .scale-up, .line-reveal. No two adjacent sections same animation. Stagger children 100ms. Bidirectional reset.
-
-b) PARALLAX HERO — bg image 0.4x scroll, headline 0.15x opposite direction.
-
-c) TEXT SPLIT — hero headline splits into words on load. Each word fades up with 80ms stagger via splitText() wrapping words in inline-block spans.
-
-d) MARQUEE — continuous scroll 30s linear infinite. Hover slows to 60s. Duplicated content, translateX(-50%).
-
-e) CURSOR (desktop @media(pointer:fine)) — Gold dot 8px, lerp factor 0.15. Chasing ring 24px, lerp 0.08. Hover: dot scale 0, ring scale 2x + fill 20% opacity.
-
-f) SECTION BG SHIFT — body background-color shifts ±5% lightness per section via IntersectionObserver threshold 0.5. Transition 0.8s.
-
-g) FLOATING ORBS — 3 blurred gradients 80-120px, opacity 0.08-0.12, separate keyframes 8-12s, in hero + atmosphere.
-
-h) GRAIN — SVG feTurbulence ::after overlay 3-5% opacity.
-
-i) NAV — transparent → solid on scroll past 80px.
-
-AI-GENERATED HOVER INDICATOR:
-.ai-generated{position:relative;transition:outline 0.2s}
-.ai-generated:hover{outline:1px dashed rgba(201,168,76,0.3);outline-offset:4px}
+MOTION — the post-processor guarantees animation CSS/JS. Your job is to apply classes: .reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger, .orb, .orb-1/.orb-2/.orb-3, .marquee-track, .grain (on body). The JS handles cursor, parallax, text split, and IntersectionObserver automatically.
 
 RESPONSIVE: grids→1col 768px, clamp() typography, 44px touch targets, overflow-x:hidden
-ACCESSIBILITY: prefers-reduced-motion disables ALL, heading hierarchy, alt text, 4.5:1 contrast, focus indicators
+ACCESSIBILITY: prefers-reduced-motion handled by injected CSS, heading hierarchy, alt text, 4.5:1 contrast, focus indicators
 META: DOCTYPE, lang, charset, viewport, OG tags, title
 
 End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
@@ -190,7 +310,6 @@ export async function POST(request: Request) {
       return jsonError('Invalid JSON in request body', 400)
     }
 
-    // Allow rawBrief as sole input
     if (!body.rawBrief && !body.brandName && !body.vibe) {
       return jsonError('Please provide at least a vision, brand name, or vibe', 400)
     }
@@ -205,20 +324,26 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, timeout: 55000 })
 
+    // Detect category for image selection
+    const vibeText = (body.rawBrief || body.vibe || '').toLowerCase()
+    const category = detectCategory(vibeText + ' ' + (body.heroImageDescription || '') + ' ' + (body.pageType || ''))
+
     // Hero image selection
-    const vibeForImage = body.rawBrief || body.vibe || ''
     let heroImage = ''
     if (body.heroImageUrl && body.heroImageUrl.match(/^https?:\/\//i)) {
       heroImage = body.heroImageUrl
     } else {
       heroImage = selectHeroImage(
-        vibeForImage,
+        body.vibe || body.rawBrief || '',
         body.heroImageDescription || '',
         body.pageType || 'landing',
         body.mood || 'dark',
         body.brandName || body.rawBrief || '',
       )
     }
+
+    // Get content images for this category
+    const contentImages = getContentImageUrls(category)
 
     const feedbackLine = body.userFeedback
       ? `\nUSER FEEDBACK (HIGHEST PRIORITY): ${body.userFeedback}`
@@ -231,37 +356,52 @@ export async function POST(request: Request) {
     let userPrompt: string
 
     if (body.rawBrief) {
-      // RAWBRIEF MODE — single sentence becomes everything
       userPrompt = `RAW BRIEF: "${body.rawBrief}"
 
-Hero Background Image URL: ${heroImage}
+Hero Background Image URL (USE THIS): ${heroImage}
+Content images to use in sections: ${contentImages.join(', ')}
 Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
 Mood: ${body.mood || 'dark'}
 Page Type: ${body.pageType || 'landing'}${feedbackLine}
 
-This is a raw brief — one sentence. Extract or invent everything: brand name, type, mood, audience, headlines, CTA, section architecture. Make bold creative decisions. Mark invented content with class="ai-generated".
-
-Include the CREATIVE DECISIONS comment block at the top with all 10 decisions.
-Include ALL motion, cursor, orbs, grain, marquee, parallax, text split.
-Output ONLY HTML.`
+This is a raw brief — one sentence. Invent everything: brand name, headlines, story, sections. Build a COMPLETE site that looks like a real launched business.
+- Hero MUST use background-image:url('${heroImage}') with background-size:cover
+- Use the content images above for feature cards and atmosphere sections
+- Every section must have REAL content — never placeholder
+- Apply .reveal / .reveal-left / .reveal-right / .reveal-scale classes to all content elements
+- Add .stagger to containers with multiple children
+- Include .orb-1, .orb-2, .orb-3 divs in hero section
+- Add class="grain" to <body>
+- Include .marquee-track with 8-12 brand keywords repeated twice
+- Include CREATIVE DECISIONS comment at top
+- Output ONLY HTML`
     } else {
-      userPrompt = `Create a complete website for this brand:
+      userPrompt = `Create a complete website:
 
 Brand Name: ${body.brandName || '(invent one)'}
 Hero Headline: ${body.headline || '(write a compelling one)'}
 CTA Button Text: ${body.ctaText || '(choose the best)'}
-Hero Background Image URL: ${heroImage}${heroDescLine}
-Emotional Brief / Vibe: ${body.vibe || '(use creative judgment)'}
-Target Audience: ${body.audience || '(infer from vibe)'}
+Hero Background Image URL (USE THIS): ${heroImage}${heroDescLine}
+Content images to use in sections: ${contentImages.join(', ')}
+Vibe: ${body.vibe || '(use creative judgment)'}
+Audience: ${body.audience || '(infer from vibe)'}
 Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
 Mood: ${body.mood || 'dark'}
 Page Type: ${body.pageType || 'landing'}${feedbackLine}
 
-${(!body.headline || !body.audience || !body.ctaText) ? 'Input is sparse — activate AUTONOMOUS MODE. Make bold decisions. Mark invented content with class="ai-generated".' : 'User provided specific content — use their headline/CTA VERBATIM.'}
+${(!body.headline || !body.audience || !body.ctaText) ? 'Input is sparse — AUTONOMOUS MODE. Invent all missing content. Mark with class="ai-generated".' : 'Use user headline/CTA VERBATIM.'}
 
-Include the CREATIVE DECISIONS comment block at the top with all 10 decisions.
-Include ALL motion, cursor, orbs, grain, marquee, parallax, text split.
-Output ONLY HTML.`
+REQUIREMENTS:
+- Hero MUST use background-image:url('${heroImage}') with background-size:cover; min-height:100vh
+- Use content images above for feature cards and sections — NEVER empty src
+- Every section: REAL content, never placeholder
+- Apply .reveal / .reveal-left / .reveal-right / .reveal-scale to all content elements
+- .stagger on containers with multiple children
+- .orb-1, .orb-2, .orb-3 in hero
+- class="grain" on body
+- .marquee-track with 8-12 keywords repeated twice
+- CREATIVE DECISIONS comment at top
+- Output ONLY HTML`
     }
 
     let html: string
@@ -295,7 +435,10 @@ Output ONLY HTML.`
 
     html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
 
-    // Extract creative decisions from the HTML comment
+    // FIX 1: Post-process — inject guaranteed animation system
+    html = postProcess(html)
+
+    // Extract creative decisions
     const decisions = extractDecisions(html)
 
     // Extract metadata
