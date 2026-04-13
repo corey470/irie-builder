@@ -7,15 +7,15 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 interface GeneratePayload {
   brandName: string
   headline: string
-  tagline: string
-  about: string
   heroImageUrl: string
+  heroImageDescription: string
   ctaText: string
   vibe: string
   audience: string
   colors: { primary: string; accent: string; background: string }
   mood: 'light' | 'dark' | 'warm'
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
+  userFeedback?: string
 }
 
 interface Metadata {
@@ -28,64 +28,97 @@ interface Metadata {
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
 
+/* ── CHAT QUESTION DEFINITIONS ────────────────── */
+
+interface ChatQuestion {
+  key: string
+  question: string
+  placeholder: string
+}
+
+const CHAT_QUESTIONS: ChatQuestion[] = [
+  { key: 'brandName', question: "What's your brand called?", placeholder: '' },
+  { key: 'vibe', question: 'What do you want someone to feel when they land here?', placeholder: 'e.g. Warm, like a festival at golden hour. Art you wear. Peace you carry.' },
+  { key: 'audience', question: 'Who are you talking to?', placeholder: 'e.g. Culture-driven fashion lovers who live at the intersection of music and art.' },
+  { key: 'headline', question: "What's your hero headline — the first thing they read?", placeholder: 'e.g. Art you wear. Peace you carry.' },
+  { key: 'heroImage', question: 'Got an image for your hero? Paste a URL — or describe what it should feel like and the AI will find one.', placeholder: 'e.g. A hand reaching up at a concert, atmospheric, bokeh lights' },
+  { key: 'ctaText', question: 'What do you want them to do?', placeholder: 'e.g. Shop the collection, Reserve a table, Join the community' },
+]
+
 /* ── PRESETS ───────────────────────────────────── */
 
 interface Preset {
   label: string
-  brandName: string; headline: string; tagline: string; about: string
-  cta: string; vibe: string; audience: string; mood: MoodOption
-  pageType: PageOption; colors: { primary: string; accent: string; background: string }
+  answers: string[]
+  mood: MoodOption
+  pageType: PageOption
+  colors: { primary: string; accent: string; background: string }
 }
 
 const PRESETS: Preset[] = [
   {
     label: 'Streetwear Brand',
-    brandName: 'Your Brand', headline: 'Built different. Worn proud.',
-    tagline: 'Premium streetwear for those who move with intention.',
-    about: 'We make clothes for the culture. Every piece is a statement, every drop is an event. Built for the ones who know.',
-    cta: 'Shop the Drop',
-    vibe: 'Bold, urban, premium streetwear. The energy of a drop day. Confident, slightly rebellious, always authentic.',
-    audience: 'Culture-driven streetwear fans 18-35', mood: 'dark', pageType: 'store',
+    answers: [
+      'Your Brand',
+      'Bold, urban, premium streetwear. The energy of a drop day. Confident, slightly rebellious, always authentic.',
+      'Culture-driven streetwear fans 18-35',
+      'Built different. Worn proud.',
+      'skip',
+      'Shop the Drop',
+    ],
+    mood: 'dark', pageType: 'store',
     colors: { primary: '#0A0A0A', accent: '#E8C547', background: '#0A0A0A' },
   },
   {
     label: 'Luxury Brand',
-    brandName: 'Your Brand', headline: 'Refined by design. Defined by you.',
-    tagline: 'Where craft meets intention.',
-    about: 'Every detail is considered. Every piece is made to last. This is luxury that doesn\'t need to announce itself.',
-    cta: 'Explore the Collection',
-    vibe: 'Quiet luxury. Refined, minimal, timeless. The feeling of quality before you even touch it.',
-    audience: 'Discerning buyers 30-55 who value craftsmanship over logos', mood: 'light', pageType: 'store',
+    answers: [
+      'Your Brand',
+      'Quiet luxury. Refined, minimal, timeless. The feeling of quality before you even touch it.',
+      'Discerning buyers 30-55 who value craftsmanship over logos',
+      'Refined by design. Defined by you.',
+      'skip',
+      'Explore the Collection',
+    ],
+    mood: 'light', pageType: 'store',
     colors: { primary: '#1A1A1A', accent: '#C9A84C', background: '#F8F5F0' },
   },
   {
     label: 'Restaurant',
-    brandName: 'Your Restaurant', headline: 'Food that stays with you.',
-    tagline: 'Made from scratch. Served with soul.',
-    about: 'Every dish tells a story. We source locally, cook intentionally, and serve food that feels like home \u2014 even if you\'ve never been here before.',
-    cta: 'Reserve a Table',
-    vibe: 'Warm, soulful, inviting. The smell of something good cooking. Neighborhood spot with a premium feel.',
-    audience: 'Local food lovers and experience seekers 25-55', mood: 'warm', pageType: 'landing',
+    answers: [
+      'Your Restaurant',
+      'Warm, soulful, inviting. The smell of something good cooking. Neighborhood spot with a premium feel.',
+      'Local food lovers and experience seekers 25-55',
+      'Food that stays with you.',
+      'skip',
+      'Reserve a Table',
+    ],
+    mood: 'warm', pageType: 'landing',
     colors: { primary: '#1C0F00', accent: '#D47C2F', background: '#FDF6EC' },
   },
   {
     label: 'Creator Portfolio',
-    brandName: 'Your Name', headline: 'This is my work.',
-    tagline: 'Creative direction, brand identity, visual storytelling.',
-    about: 'I help brands find their visual voice. Every project starts with a conversation and ends with something you didn\'t know you needed until you saw it.',
-    cta: 'See My Work',
-    vibe: 'Creative, editorial, confident. The portfolio of someone who knows exactly what they do and does it exceptionally well.',
-    audience: 'Brands and businesses looking for creative partnership', mood: 'dark', pageType: 'portfolio',
+    answers: [
+      'Your Name',
+      'Creative, editorial, confident. The portfolio of someone who knows exactly what they do and does it exceptionally well.',
+      'Brands and businesses looking for creative partnership',
+      'This is my work.',
+      'skip',
+      'See My Work',
+    ],
+    mood: 'dark', pageType: 'portfolio',
     colors: { primary: '#080808', accent: '#FF4D00', background: '#080808' },
   },
   {
     label: 'Event Page',
-    brandName: 'Your Event', headline: 'You don\'t want to miss this.',
-    tagline: 'One night. One experience. No replay.',
-    about: 'This isn\'t just an event. It\'s a moment. Curated music, curated people, curated energy. The kind of night that becomes a story you tell.',
-    cta: 'Get Your Tickets',
-    vibe: 'High energy, exclusive, electric. The anticipation before the doors open. FOMO in the best way.',
-    audience: 'Event-goers and culture community 21-40', mood: 'dark', pageType: 'event',
+    answers: [
+      'Your Event',
+      'High energy, exclusive, electric. The anticipation before the doors open. FOMO in the best way.',
+      'Event-goers and culture community 21-40',
+      "You don't want to miss this.",
+      'skip',
+      'Get Your Tickets',
+    ],
+    mood: 'dark', pageType: 'event',
     colors: { primary: '#0A0008', accent: '#9B5DE5', background: '#0A0008' },
   },
 ]
@@ -123,20 +156,26 @@ function Pill<T extends string>({
   )
 }
 
+/* ── CHAT MESSAGE TYPE ────────────────────────── */
+
+interface ChatMessage {
+  role: 'ai' | 'user'
+  text: string
+}
+
 /* ── DASHBOARD PAGE ────────────────────────────── */
 
 export default function DashboardPage() {
-  /* form state — Your Content */
-  const [brandName, setBrandName] = useState('')
-  const [headline, setHeadline] = useState('')
-  const [tagline, setTagline] = useState('')
-  const [about, setAbout] = useState('')
-  const [heroImageUrl, setHeroImageUrl] = useState('')
-  const [ctaText, setCtaText] = useState('')
+  /* chat state */
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [currentStep, setCurrentStep] = useState(0)
+  const [inputValue, setInputValue] = useState('')
+  const [isTyping, setIsTyping] = useState(false)
+  const [chatPhase, setChatPhase] = useState<'conversation' | 'generating' | 'complete' | 'feedback'>('conversation')
+  const [answers, setAnswers] = useState<string[]>([])
 
-  /* form state — Your Vibe */
-  const [vibe, setVibe] = useState('')
-  const [audience, setAudience] = useState('')
+  /* form state — Your Vibe (kept as-is) */
+  const [vibeText, setVibeText] = useState('')
   const [mood, setMood] = useState<MoodOption>('dark')
   const [pageType, setPageType] = useState<PageOption>('landing')
   const [primary, setPrimary] = useState('#111111')
@@ -151,20 +190,34 @@ export default function DashboardPage() {
   const [genCount, setGenCount] = useState(0)
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const [errorLog, setErrorLog] = useState<{ time: string; message: string }[]>([])
+  const [userFeedback, setUserFeedback] = useState<string | null>(null)
 
   /* mobile panel */
   const [mobilePanel, setMobilePanel] = useState<'form' | 'preview' | 'log'>('form')
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  /* preset apply */
-  const applyPreset = useCallback((p: Preset) => {
-    setBrandName(p.brandName); setHeadline(p.headline); setTagline(p.tagline)
-    setAbout(p.about); setCtaText(p.cta); setVibe(p.vibe)
-    setAudience(p.audience); setMood(p.mood); setPageType(p.pageType)
-    setPrimary(p.colors.primary); setAccent(p.colors.accent); setBackground(p.colors.background)
-    setHeroImageUrl('')
+  /* scroll chat to bottom on new messages */
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, isTyping])
+
+  /* show first question on mount */
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMessages([{ role: 'ai', text: CHAT_QUESTIONS[0].question }])
+    }, 400)
+    return () => clearTimeout(timer)
   }, [])
+
+  /* focus input after typing indicator clears */
+  useEffect(() => {
+    if (!isTyping && chatPhase === 'conversation') {
+      inputRef.current?.focus()
+    }
+  }, [isTyping, chatPhase])
 
   /* cycle loading messages */
   useEffect(() => {
@@ -176,18 +229,44 @@ export default function DashboardPage() {
     return () => clearInterval(iv)
   }, [loading])
 
-  /* generate */
-  const generate = useCallback(async () => {
-    if (!brandName.trim() || !vibe.trim()) return
+  /* ── GENERATE ── */
+  const generate = useCallback(async (collectedAnswers: string[], feedback?: string) => {
+    const brandName = collectedAnswers[0] || ''
+    const vibe = collectedAnswers[1] || ''
+    const audience = collectedAnswers[2] || ''
+    const headline = collectedAnswers[3] || ''
+    const heroRaw = collectedAnswers[4] || ''
+    const ctaText = collectedAnswers[5] || ''
+
+    const isUrl = heroRaw.match(/^https?:\/\//i)
+    const isSkip = heroRaw.toLowerCase() === 'skip' || heroRaw.trim() === ''
+
+    // Merge chat vibe with Your Vibe textarea
+    const mergedVibe = vibeText.trim()
+      ? `${vibe}. ${vibeText.trim()}`
+      : vibe
+
+    const finalVibe = feedback
+      ? `${mergedVibe} — User feedback: ${feedback}`
+      : mergedVibe
+
+    if (!brandName.trim() || !finalVibe.trim()) return
+
     setLoading(true)
     setError(null)
 
     const payload: GeneratePayload = {
-      brandName: brandName.trim(), headline: headline.trim(),
-      tagline: tagline.trim(), about: about.trim(),
-      heroImageUrl: heroImageUrl.trim(), ctaText: ctaText.trim(),
-      vibe: vibe.trim(), audience: audience.trim(),
-      colors: { primary, accent, background }, mood, pageType,
+      brandName: brandName.trim(),
+      headline: headline.trim(),
+      heroImageUrl: isUrl ? heroRaw.trim() : '',
+      heroImageDescription: (!isUrl && !isSkip) ? heroRaw.trim() : '',
+      ctaText: ctaText.trim(),
+      vibe: finalVibe.trim(),
+      audience: audience.trim(),
+      colors: { primary, accent, background },
+      mood,
+      pageType,
+      ...(feedback ? { userFeedback: feedback } : {}),
     }
 
     try {
@@ -219,14 +298,162 @@ export default function DashboardPage() {
         const doc = iframeRef.current.contentDocument
         if (doc) { doc.open(); doc.write(data.html as string); doc.close() }
       }
+
+      // Show completion messages
+      setChatPhase('complete')
+      setMessages(prev => [...prev, { role: 'ai', text: "There's no perfect website. Only one that feels right to you." }])
+
+      setTimeout(() => {
+        setMessages(prev => [...prev, { role: 'ai', text: 'Does this feel right? Or should we adjust something?' }])
+        setChatPhase('feedback')
+      }, 1500)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error'
       setError(msg)
       setErrorLog(prev => [...prev, { time: new Date().toLocaleTimeString(), message: msg }])
+      setMessages(prev => [...prev, { role: 'ai', text: `Something went wrong: ${msg}. Try again?` }])
+      setChatPhase('conversation')
+      // Reset to allow retry from last question
     } finally {
       setLoading(false)
     }
-  }, [brandName, headline, tagline, about, heroImageUrl, ctaText, vibe, audience, primary, accent, background, mood, pageType])
+  }, [vibeText, primary, accent, background, mood, pageType])
+
+  /* ── SUBMIT ANSWER ── */
+  const submitAnswer = useCallback((value?: string) => {
+    const answer = (value ?? inputValue).trim()
+    if (!answer && currentStep !== 4) return // Q5 (hero) can be blank/skip
+
+    const displayAnswer = answer || 'skip'
+    setInputValue('')
+
+    // Add user bubble
+    setMessages(prev => [...prev, { role: 'user', text: displayAnswer }])
+
+    const newAnswers = [...answers, displayAnswer]
+    setAnswers(newAnswers)
+
+    const nextStep = currentStep + 1
+
+    if (nextStep < CHAT_QUESTIONS.length) {
+      // Show typing indicator then next question
+      setIsTyping(true)
+      setCurrentStep(nextStep)
+      setTimeout(() => {
+        setIsTyping(false)
+        setMessages(prev => [...prev, { role: 'ai', text: CHAT_QUESTIONS[nextStep].question }])
+      }, 600)
+    } else {
+      // All questions answered — trigger generation
+      setCurrentStep(nextStep)
+      setIsTyping(true)
+      setTimeout(() => {
+        setIsTyping(false)
+        setMessages(prev => [...prev, { role: 'ai', text: 'Got it. Building your experience now.' }])
+        setChatPhase('generating')
+        generate(newAnswers)
+      }, 600)
+    }
+  }, [inputValue, currentStep, answers, generate])
+
+  /* ── SUBMIT FEEDBACK ── */
+  const submitFeedback = useCallback(() => {
+    const feedback = inputValue.trim()
+    if (!feedback) return
+    setInputValue('')
+    setMessages(prev => [...prev, { role: 'user', text: feedback }])
+    setUserFeedback(feedback)
+
+    setIsTyping(true)
+    setTimeout(() => {
+      setIsTyping(false)
+      setMessages(prev => [...prev, { role: 'ai', text: "Tell me what to change and I'll rebuild it around your feedback." }])
+      setChatPhase('generating')
+
+      // Clear preview for loading state
+      setHtml(null)
+      setMetadata(null)
+
+      generate(answers, feedback)
+    }, 600)
+  }, [inputValue, answers, generate])
+
+  /* ── HANDLE SEND ── */
+  const handleSend = useCallback(() => {
+    if (chatPhase === 'feedback') {
+      submitFeedback()
+    } else if (chatPhase === 'conversation') {
+      submitAnswer()
+    }
+  }, [chatPhase, submitAnswer, submitFeedback])
+
+  /* ── PRESET SPEED-RUN ── */
+  const applyPreset = useCallback((p: Preset) => {
+    // Set vibe controls
+    setMood(p.mood)
+    setPageType(p.pageType)
+    setPrimary(p.colors.primary)
+    setAccent(p.colors.accent)
+    setBackground(p.colors.background)
+
+    // Clear chat and fast-forward
+    setMessages([])
+    setAnswers([])
+    setCurrentStep(0)
+    setError(null)
+    setChatPhase('conversation')
+
+    const allMessages: ChatMessage[] = []
+    let delay = 0
+
+    for (let i = 0; i < CHAT_QUESTIONS.length; i++) {
+      const qDelay = delay
+      const aDelay = delay + 150
+
+      allMessages.push({ role: 'ai', text: CHAT_QUESTIONS[i].question })
+      allMessages.push({ role: 'user', text: p.answers[i] })
+
+      setTimeout(() => {
+        setMessages(prev => [...prev, { role: 'ai', text: CHAT_QUESTIONS[i].question }])
+      }, qDelay)
+
+      setTimeout(() => {
+        setMessages(prev => [...prev, { role: 'user', text: p.answers[i] }])
+      }, aDelay)
+
+      delay += 300
+    }
+
+    // After all bubbles, show "Got it" and trigger generation
+    setTimeout(() => {
+      setAnswers(p.answers)
+      setCurrentStep(CHAT_QUESTIONS.length)
+      setIsTyping(true)
+    }, delay)
+
+    setTimeout(() => {
+      setIsTyping(false)
+      setMessages(prev => [...prev, { role: 'ai', text: 'Got it. Building your experience now.' }])
+      setChatPhase('generating')
+      generate(p.answers)
+    }, delay + 600)
+  }, [generate])
+
+  /* ── START OVER ── */
+  const startOver = useCallback(() => {
+    setMessages([])
+    setAnswers([])
+    setCurrentStep(0)
+    setInputValue('')
+    setIsTyping(false)
+    setError(null)
+    setChatPhase('conversation')
+    setUserFeedback(null)
+
+    setTimeout(() => {
+      setMessages([{ role: 'ai', text: CHAT_QUESTIONS[0].question }])
+    }, 300)
+  }, [])
 
   /* helpers */
   const openFullScreen = () => {
@@ -239,7 +466,7 @@ export default function DashboardPage() {
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = `${brandName.toLowerCase().replace(/\s+/g, '-') || 'site'}.html`
+    a.href = url; a.download = `${(answers[0] || 'site').toLowerCase().replace(/\s+/g, '-')}.html`
     a.click(); URL.revokeObjectURL(url)
   }
   const onIframeLoad = useCallback(() => {
@@ -262,7 +489,7 @@ export default function DashboardPage() {
       logItems.push({ icon: '\u2726', label: 'Sections', value: metadata.sections.join(' \u2192 ') })
   }
 
-  const canGenerate = brandName.trim().length > 0 && vibe.trim().length > 0
+  const showInput = chatPhase === 'conversation' || chatPhase === 'feedback'
 
   return (
     <>
@@ -293,54 +520,77 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ── GROUP 1: YOUR CONTENT ── */}
-            <p className="db-group-header">Your Content</p>
+            {/* ── AI CHAT INTERFACE ── */}
+            <div className="chat">
+              {/* Progress dots */}
+              <div className="chat-progress">
+                {CHAT_QUESTIONS.map((_, i) => (
+                  <div key={i} className={`chat-dot ${i < answers.length ? 'chat-dot--filled' : ''}`} />
+                ))}
+                {currentStep > 0 && (
+                  <button type="button" className="chat-restart" onClick={startOver}>
+                    Start over
+                  </button>
+                )}
+              </div>
 
-            <label className="db-label" htmlFor="brandName">Brand Name</label>
-            <input id="brandName" className="db-input" type="text"
-              placeholder="e.g. Irie Threads"
-              value={brandName} onChange={e => setBrandName(e.target.value)} />
+              {/* Messages */}
+              <div className="chat-messages">
+                {messages.map((msg, i) => (
+                  <div key={i} className={`chat-bubble chat-bubble--${msg.role}`}>
+                    {msg.text}
+                  </div>
+                ))}
 
-            <label className="db-label" htmlFor="headline">Hero Headline</label>
-            <input id="headline" className="db-input" type="text"
-              placeholder="What's the first thing they should read?"
-              value={headline} onChange={e => setHeadline(e.target.value)} />
+                {/* Typing indicator */}
+                {isTyping && (
+                  <div className="chat-typing">
+                    <span className="chat-typing-dot" />
+                    <span className="chat-typing-dot" />
+                    <span className="chat-typing-dot" />
+                  </div>
+                )}
 
-            <label className="db-label" htmlFor="tagline">Tagline</label>
-            <input id="tagline" className="db-input" type="text"
-              placeholder="One line that captures your brand"
-              value={tagline} onChange={e => setTagline(e.target.value)} />
+                <div ref={chatEndRef} />
+              </div>
 
-            <label className="db-label" htmlFor="about">About</label>
-            <textarea id="about" className="db-textarea" rows={3}
-              placeholder="2-3 sentences about your brand, in your own words"
-              value={about} onChange={e => setAbout(e.target.value)} />
-
-            <label className="db-label" htmlFor="heroImage">Hero Image URL</label>
-            <input id="heroImage" className="db-input" type="text"
-              placeholder="Paste an image URL \u2014 or leave blank and AI will choose"
-              value={heroImageUrl} onChange={e => setHeroImageUrl(e.target.value)} />
-
-            <label className="db-label" htmlFor="ctaText">CTA Button Text</label>
-            <input id="ctaText" className="db-input" type="text"
-              placeholder="e.g. Shop Now, Book a Table, Join the Community"
-              value={ctaText} onChange={e => setCtaText(e.target.value)} />
+              {/* Input row */}
+              {showInput && !isTyping && (
+                <div className="chat-input-row">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="chat-input"
+                    value={inputValue}
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSend() }}
+                    placeholder={
+                      chatPhase === 'feedback'
+                        ? 'Tell me what to change\u2026'
+                        : currentStep < CHAT_QUESTIONS.length
+                          ? CHAT_QUESTIONS[currentStep].placeholder || 'Type your answer\u2026'
+                          : ''
+                    }
+                  />
+                  <button type="button" className="chat-send" onClick={handleSend} aria-label="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* ── DIVIDER ── */}
             <div className="db-divider" />
 
-            {/* ── GROUP 2: YOUR VIBE ── */}
+            {/* ── GROUP 2: YOUR VIBE (kept as-is) ── */}
             <p className="db-group-header">Your Vibe</p>
 
-            <label className="db-label" htmlFor="vibe">Vibe</label>
+            <label className="db-label" htmlFor="vibe">Vibe (optional extra detail)</label>
             <textarea id="vibe" className="db-textarea db-textarea-sm" rows={2}
-              placeholder="Describe the feeling (e.g. luxury, island vibe, bold streetwear, calm & minimal)"
-              value={vibe} onChange={e => setVibe(e.target.value)} />
-
-            <label className="db-label" htmlFor="audience">Audience</label>
-            <input id="audience" className="db-input" type="text"
-              placeholder="e.g. fashion-forward women 25-40, cannabis culture community"
-              value={audience} onChange={e => setAudience(e.target.value)} />
+              placeholder="Add more vibe detail here — merges with what you told the AI above"
+              value={vibeText} onChange={e => setVibeText(e.target.value)} />
 
             <fieldset className="db-fieldset">
               <legend className="db-label">Mood</legend>
@@ -376,13 +626,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ── GENERATE BUTTON ── */}
-            <button className="db-generate" onClick={generate} disabled={loading || !canGenerate}>
-              {loading ? LOADING_MESSAGES[loadingMsgIdx] : genCount === 0 ? 'Bring My Brand to Life' : 'Regenerate'}
-            </button>
-            <p className="db-gen-sub">Takes ~15 seconds. Fully customizable after.</p>
-            <p className="db-gen-micro">No templates. No coding. Just your vision \u2014 brought to life.</p>
-
             {genCount > 0 && <p className="db-gen-count">Generation #{genCount}</p>}
             {error && <p className="db-error">{error}</p>}
           </div>
@@ -394,7 +637,7 @@ export default function DashboardPage() {
             <div className="db-placeholder">
               <p className="db-placeholder-title">Describe your brand.</p>
               <p className="db-placeholder-title">Watch it come alive.</p>
-              <p className="db-placeholder-sub">Every scroll, every motion, every detail \u2014 built around your vibe.</p>
+              <p className="db-placeholder-sub">Every scroll, every motion, every detail — built around your vibe.</p>
             </div>
           )}
 
@@ -474,6 +717,7 @@ const dashboardCSS = `
     --black:#080808;--surface:#0f0f0f;--border:rgba(201,168,76,0.18);
     --gold:#C9A84C;--gold-dim:rgba(201,168,76,0.12);
     --text:#F2EDE4;--muted:rgba(242,237,228,0.45);--radius:6px;
+    --chat-bg:#0D0D0D;--chat-user-bg:#1A1A1A;
   }
   body{font-family:'Syne',system-ui,sans-serif;background:var(--black);color:var(--text);overflow:hidden;height:100dvh}
 
@@ -500,6 +744,43 @@ const dashboardCSS = `
   .db-presets-row{display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .db-preset-pill{padding:7px 14px;border:1px solid var(--gold);border-radius:100px;background:transparent;color:var(--gold);font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;letter-spacing:0.03em;cursor:pointer;transition:all 0.2s;white-space:nowrap;min-height:44px;display:flex;align-items:center}
   .db-preset-pill:hover{background:var(--gold-dim);color:var(--text)}
+
+  /* ── CHAT INTERFACE ── */
+  .chat{background:var(--chat-bg);border-radius:12px;display:flex;flex-direction:column;max-height:380px;position:relative}
+
+  /* progress dots */
+  .chat-progress{display:flex;align-items:center;gap:6px;padding:12px 16px 0;flex-shrink:0}
+  .chat-dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--gold);opacity:0.35;transition:all 0.3s}
+  .chat-dot--filled{background:var(--gold);opacity:1;border-color:var(--gold)}
+  .chat-restart{margin-left:auto;background:none;border:none;color:var(--muted);font-family:'Syne',system-ui,sans-serif;font-size:11px;cursor:pointer;letter-spacing:0.02em;transition:color 0.2s;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
+  .chat-restart:hover{color:var(--gold)}
+
+  /* messages area */
+  .chat-messages{flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:10px;min-height:120px}
+  .chat-messages::-webkit-scrollbar{width:3px}
+  .chat-messages::-webkit-scrollbar-track{background:transparent}
+  .chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  /* bubbles */
+  .chat-bubble{max-width:88%;line-height:1.5;animation:chatFadeIn 0.3s ease-out}
+  .chat-bubble--ai{align-self:flex-start;color:var(--gold);font-family:'Syne',system-ui,sans-serif;font-size:14px;padding:0}
+  .chat-bubble--user{align-self:flex-end;background:var(--chat-user-bg);color:var(--text);font-size:13px;padding:8px 14px;border-radius:12px 12px 4px 12px}
+  @keyframes chatFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+  /* typing indicator */
+  .chat-typing{display:flex;gap:4px;padding:4px 0;align-self:flex-start}
+  .chat-typing-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);opacity:0.4;animation:typingBounce 1.2s ease-in-out infinite}
+  .chat-typing-dot:nth-child(2){animation-delay:0.15s}
+  .chat-typing-dot:nth-child(3){animation-delay:0.3s}
+  @keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:0.4}30%{transform:translateY(-4px);opacity:1}}
+
+  /* input row */
+  .chat-input-row{display:flex;gap:8px;padding:8px 12px 12px;border-top:1px solid rgba(201,168,76,0.1);flex-shrink:0}
+  .chat-input{flex:1;background:var(--chat-user-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:16px;line-height:1.4;transition:border-color 0.2s}
+  .chat-input:focus{outline:none;border-color:var(--gold)}
+  .chat-input::placeholder{color:var(--muted);font-size:12px}
+  .chat-send{width:44px;height:44px;border-radius:8px;background:var(--gold);border:none;color:var(--black);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:box-shadow 0.2s}
+  .chat-send:hover{box-shadow:0 0 16px rgba(201,168,76,0.3)}
 
   /* group headers */
   .db-group-header{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold);margin-top:4px;margin-bottom:12px}
@@ -528,13 +809,7 @@ const dashboardCSS = `
   .db-color-item span{font-size:11px;color:var(--muted);line-height:1.4}
   .db-color-item code{font-size:10px;color:var(--text);font-family:'Syne',monospace}
 
-  /* generate button */
-  .db-generate{margin-top:20px;width:100%;padding:16px;background:var(--gold);color:var(--black);border:none;border-radius:var(--radius);font-family:'Playfair Display',Georgia,serif;font-size:16px;font-weight:700;letter-spacing:0.02em;cursor:pointer;transition:box-shadow 0.3s,opacity 0.2s;min-height:52px}
-  .db-generate:hover:not(:disabled){box-shadow:0 0 24px rgba(201,168,76,0.35),0 0 48px rgba(201,168,76,0.15)}
-  .db-generate:disabled{opacity:0.5;cursor:not-allowed}
-  .db-gen-sub{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
-  .db-gen-micro{text-align:center;font-size:11px;color:var(--gold);margin-top:4px;opacity:0.7;font-style:italic}
-  .db-gen-count{text-align:center;font-size:11px;color:var(--muted);margin-top:6px}
+  .db-gen-count{text-align:center;font-size:11px;color:var(--muted);margin-top:16px}
   .db-error{text-align:center;font-size:12px;color:#e55;margin-top:8px}
 
   /* ── CENTER: PREVIEW ── */
@@ -591,11 +866,14 @@ const dashboardCSS = `
     .db-log{display:none;border-left:none;border-top:1px solid var(--border)}
     .db-log.db-panel--active{display:flex;flex-direction:column}
     .db-presets-row{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+    .chat{max-height:300px}
   }
 
   @media(prefers-reduced-motion:reduce){
     .db-loading-pulse{animation:none;opacity:0.8}
     .db-loading-msg{animation:none;opacity:1}
+    .chat-bubble{animation:none}
+    .chat-typing-dot{animation:none;opacity:0.6}
   }
 
   .db-panel::-webkit-scrollbar{width:4px}

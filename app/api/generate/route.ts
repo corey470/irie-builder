@@ -6,15 +6,15 @@ export const maxDuration = 60
 interface GenerateRequest {
   brandName: string
   headline: string
-  tagline: string
-  about: string
   heroImageUrl: string
+  heroImageDescription: string
   ctaText: string
   vibe: string
   audience: string
   colors: { primary: string; accent: string; background: string }
   mood: 'light' | 'dark' | 'warm'
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
+  userFeedback?: string
 }
 
 function jsonError(message: string, status: number) {
@@ -28,22 +28,32 @@ const HERO_IMAGES: Record<string, string> = {
   wellness: 'https://images.unsplash.com/photo-1506905925637-6855e6d3f191?auto=format&fit=crop&w=1920&q=80',
   food: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1920&q=80',
   creative: 'https://images.unsplash.com/photo-1499781350541-7783f6c6a0c8?auto=format&fit=crop&w=1920&q=80',
+  concert: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=1920&q=80',
+  nature: 'https://images.unsplash.com/photo-1506905925637-6855e6d3f191?auto=format&fit=crop&w=1920&q=80',
+  urban: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1920&q=80',
   default: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1920&q=80',
 }
 
-function pickHeroImage(vibe: string, pageType: string): string {
-  const v = `${vibe} ${pageType}`.toLowerCase()
+function pickHeroImage(description: string, vibe: string, pageType: string): string {
+  const v = `${description} ${vibe} ${pageType}`.toLowerCase()
+  if (v.includes('concert') || v.includes('festival') || v.includes('hand') || v.includes('bokeh')) return HERO_IMAGES.concert
   if (v.includes('fashion') || v.includes('streetwear') || v.includes('cloth') || v.includes('store')) return HERO_IMAGES.fashion
-  if (v.includes('event') || v.includes('festival') || v.includes('concert') || v.includes('ticket')) return HERO_IMAGES.event
-  if (v.includes('wellness') || v.includes('heal') || v.includes('cannabis') || v.includes('nature')) return HERO_IMAGES.wellness
+  if (v.includes('event') || v.includes('ticket') || v.includes('party')) return HERO_IMAGES.event
+  if (v.includes('wellness') || v.includes('heal') || v.includes('cannabis')) return HERO_IMAGES.wellness
   if (v.includes('food') || v.includes('restaurant') || v.includes('cook') || v.includes('dish')) return HERO_IMAGES.food
   if (v.includes('creative') || v.includes('portfolio') || v.includes('design') || v.includes('art')) return HERO_IMAGES.creative
+  if (v.includes('nature') || v.includes('outdoor') || v.includes('forest') || v.includes('mountain')) return HERO_IMAGES.nature
+  if (v.includes('urban') || v.includes('city') || v.includes('street')) return HERO_IMAGES.urban
   return HERO_IMAGES.default
 }
 
 const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. You create living, breathing websites that feel ALIVE.
 
-CRITICAL RULE: NEVER invent the user's copy. Use their EXACT headline, tagline, about text, and CTA button text verbatim. Only generate copy for sections the user didn't provide text for (e.g. feature descriptions, social proof quotes).
+CRITICAL RULES:
+1. NEVER invent the user's headline, tagline, or CTA — use their EXACT words verbatim. Do not rephrase, improve, or "enhance" their copy.
+2. If heroImageDescription is provided instead of heroImageUrl — select the most appropriate Unsplash photo based on the description and vibe. Use a high-quality Unsplash URL.
+3. If userFeedback is present — treat it as the HIGHEST PRIORITY instruction and adjust the generated site accordingly. This overrides vibe, layout, and creative choices where they conflict.
+4. End every generated site with this HTML comment in the footer: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
 
 CREATIVE DECISIONS — announce in an HTML comment at the top:
 <!-- CREATIVE DECISIONS
@@ -71,13 +81,13 @@ h) Grain texture overlay at 3-5% opacity
 i) Nav: transparent → solid on scroll (80px threshold)
 
 REQUIRED SECTION STRUCTURE (7 sections in this order):
-1. Hero — full screen (min-height:100svh), parallax background, user's headline + tagline + CTA button + inline email form
+1. Hero — full screen (min-height:100svh), parallax background, user's headline + CTA button + inline email form
 2. Marquee strip — scrolling brand keywords
 3. Feature/Collection section — relevant to pageType
-4. Brand story — two-column layout with user's about text
+4. Brand story — two-column layout
 5. Atmosphere section — full-bleed image with overlay
 6. Email capture — prominent CTA section with user's CTA text
-7. Footer — brand name, tagline, copyright, placeholder links
+7. Footer — brand name, copyright, placeholder links, then the Irie Builder HTML comment
 
 RESPONSIVE: grids→1col at 768px, clamp() typography, 44px touch targets, overflow-x:hidden, forms stack at 480px
 ACCESSIBILITY: prefers-reduced-motion disables all, heading hierarchy, alt text, 4.5:1 contrast, focus indicators, labeled form inputs
@@ -107,27 +117,38 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, timeout: 55000 })
 
-    const heroImage = body.heroImageUrl || pickHeroImage(body.vibe, body.pageType)
+    // Determine hero image
+    let heroImage = body.heroImageUrl
+    if (!heroImage) {
+      heroImage = pickHeroImage(body.heroImageDescription || '', body.vibe, body.pageType)
+    }
+
+    const feedbackLine = body.userFeedback
+      ? `\nUSER FEEDBACK (HIGHEST PRIORITY — adjust the site based on this): ${body.userFeedback}`
+      : ''
+
+    const heroDescLine = body.heroImageDescription
+      ? `\nHero Image Description (select an appropriate Unsplash photo matching this): ${body.heroImageDescription}`
+      : ''
 
     const userPrompt = `Create a complete website for this brand:
 
 Brand Name: ${body.brandName}
 Hero Headline (USE EXACTLY): ${body.headline || 'Welcome to ' + body.brandName}
-Tagline (USE EXACTLY): ${body.tagline || ''}
-About Text (USE EXACTLY in brand story section): ${body.about || ''}
 CTA Button Text (USE EXACTLY): ${body.ctaText || 'Get Started'}
-Hero Background Image URL: ${heroImage}
+Hero Background Image URL: ${heroImage}${heroDescLine}
 Emotional Brief / Vibe: ${body.vibe}
 Target Audience: ${body.audience || 'general'}
 Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
 Mood: ${body.mood}
-Page Type: ${body.pageType}
+Page Type: ${body.pageType}${feedbackLine}
 
 REMINDERS:
-- Use the user's headline, tagline, about, and CTA text VERBATIM — do not rephrase
+- Use the user's headline and CTA text VERBATIM — do not rephrase
 - Use the provided hero image URL as the hero background
 - Include ALL motion: parallax, bidirectional IntersectionObserver, custom cursor (gold dot + ring), orbs, grain, marquee, nav scroll
 - 7 sections: hero → marquee → features → brand story → atmosphere → email capture → footer
+- End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
 - Output ONLY HTML`
 
     let html: string
@@ -144,7 +165,7 @@ REMINDERS:
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown API error'
       if (msg.includes('timeout') || msg.includes('abort') || msg.includes('ETIMEDOUT')) {
-        return jsonError('Generation timed out. The AI took too long \u2014 please try again.', 504)
+        return jsonError('Generation timed out. The AI took too long — please try again.', 504)
       }
       if (msg.includes('rate_limit')) {
         return jsonError('Rate limited by AI provider. Please wait 60 seconds and try again.', 429)
