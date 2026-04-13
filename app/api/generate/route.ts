@@ -15,13 +15,20 @@ interface GenerateRequest {
   mood: 'light' | 'dark' | 'warm'
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
   userFeedback?: string
+  rawBrief?: string
+}
+
+interface CreativeDecision {
+  label: string
+  value: string
+  reason: string
 }
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: true, message }, { status })
 }
 
-/* ── FIX 1: Hero Image Selection System ───────── */
+/* ── Hero Image Selection ─────────────────────── */
 
 const IMAGE_MAP: Record<string, string[]> = {
   dj:       ['photo-1470229722913', 'photo-1493225457124', 'photo-1501386761578'],
@@ -37,8 +44,8 @@ const IMAGE_MAP: Record<string, string[]> = {
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   dj:       ['dj', 'music', 'concert', 'festival', 'nightlife', 'electronic', 'beats', 'bokeh', 'crowd', 'stage', 'golden hour'],
   fashion:  ['fashion', 'streetwear', 'clothing', 'apparel', 'style', 'brand', 'wear', 'outfit', 'threads', 'drip'],
-  luxury:   ['luxury', 'premium', 'high-end', 'refined', 'minimal', 'elegant', 'sophisticated', 'exclusive'],
-  food:     ['restaurant', 'food', 'dining', 'cafe', 'kitchen', 'chef', 'cook', 'dish', 'menu', 'table'],
+  luxury:   ['luxury', 'premium', 'high-end', 'refined', 'minimal', 'elegant', 'sophisticated', 'candle'],
+  food:     ['restaurant', 'food', 'dining', 'cafe', 'kitchen', 'chef', 'cook', 'dish', 'menu', 'table', 'farm'],
   cannabis: ['cannabis', 'wellness', 'nature', 'organic', 'plant', 'herb', 'holistic', 'healing', 'zen'],
   creative: ['creative', 'portfolio', 'art', 'design', 'photography', 'agency', 'studio', 'work'],
   event:    ['event', 'party', 'celebration', 'experience', 'exclusive', 'ticket', 'night', 'launch'],
@@ -47,120 +54,132 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 const DEFAULT_IMAGE = 'photo-1493225457124'
 
-function selectHeroImage(
-  vibe: string,
-  heroImageDescription: string,
-  pageType: string,
-  mood: string,
-  brandName: string,
-): string {
+function selectHeroImage(vibe: string, heroImageDescription: string, pageType: string, mood: string, brandName: string): string {
   const text = `${heroImageDescription} ${vibe} ${pageType} ${mood}`.toLowerCase()
-
-  // Score each category by keyword matches
   let bestCategory = ''
   let bestScore = 0
-
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     let score = 0
-    for (const kw of keywords) {
-      if (text.includes(kw)) score++
-    }
-    if (score > bestScore) {
-      bestScore = score
-      bestCategory = category
+    for (const kw of keywords) { if (text.includes(kw)) score++ }
+    if (score > bestScore) { bestScore = score; bestCategory = category }
+  }
+  const photos = bestCategory ? IMAGE_MAP[bestCategory] : [DEFAULT_IMAGE]
+  const index = (brandName || '').length % photos.length
+  return `https://images.unsplash.com/${photos[index]}?auto=format&fit=crop&w=1920&q=80`
+}
+
+/* ── Extract Creative Decisions from HTML comment ── */
+
+function extractDecisions(html: string): CreativeDecision[] {
+  const decisions: CreativeDecision[] = []
+  const match = html.match(/<!--\s*CREATIVE DECISIONS\s*([\s\S]*?)-->/)
+  if (!match) return decisions
+
+  const block = match[1]
+  const lines = block.split('\n').filter(l => l.trim())
+
+  for (const line of lines) {
+    // Format: "Label: value — reason" or "Label: value"
+    const m = line.match(/^\s*(?:[*\-\u2726]\s*)?([^:]+):\s*(.+)$/)
+    if (!m) continue
+    const label = m[1].trim()
+    const rest = m[2].trim()
+    const dashIdx = rest.indexOf(' \u2014 ')
+    if (dashIdx > -1) {
+      decisions.push({ label, value: rest.slice(0, dashIdx).trim(), reason: rest.slice(dashIdx + 3).trim() })
+    } else {
+      decisions.push({ label, value: rest, reason: '' })
     }
   }
 
-  const photos = bestCategory ? IMAGE_MAP[bestCategory] : [DEFAULT_IMAGE]
-
-  // Rotate selection based on brandName length so different brands get different images
-  const index = (brandName || '').length % photos.length
-  const photoId = photos[index]
-
-  return `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1920&q=80`
+  return decisions
 }
 
-/* ── System Prompt ────────────────────────────── */
+/* ── System Prompt (UPGRADE 3) ────────────────── */
 
-const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. You create living, breathing websites that feel ALIVE.
+const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. Not a site builder — a creative director with taste, experience, and a point of view. You make decisions the user didn't ask for and wouldn't have thought of. Every generation should feel like it was made by someone who really knows what they're doing.
 
-CRITICAL RULES:
-1. When the user provides a headline, tagline, or CTA — use their EXACT words verbatim. Do not rephrase, improve, or "enhance" their copy.
-2. If heroImageDescription is provided instead of heroImageUrl — select the most appropriate Unsplash photo based on the description and vibe.
-3. If userFeedback is present — treat it as the HIGHEST PRIORITY instruction and adjust the generated site accordingly. This overrides vibe, layout, and creative choices where they conflict.
-4. End every generated site with this HTML comment in the footer: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
+COPY RULES — absolute:
+1. If the user provided a headline — use it VERBATIM, never change a word
+2. If the user provided an about/brand story — use it VERBATIM
+3. If the user provided a CTA — use it VERBATIM
+4. Everything else — you write it in the brand voice you decide on
+5. Copy must never sound like a template. Every word must sound like it was written specifically for this brand.
+
+RAWBRIEF MODE:
+When a rawBrief is the only meaningful input — read it and extract or invent: brand name, brand type, mood, audience, color direction, typography direction, section needs. Then build a complete site as if you had received a full brief. The rawBrief is the creative seed — everything grows from it.
 
 AUTONOMOUS CREATIVE DIRECTOR MODE:
-You are a world-class creative director. When input is sparse, you do NOT ask for more — you make bold, confident creative decisions and build a complete, polished, atmospheric site.
+When input is sparse, you do NOT ask for more — you make bold, confident creative decisions.
+- Missing brand name? Invent a compelling one that fits the vibe.
+- Missing headline? Write the most compelling headline you can.
+- Missing CTA? Choose the most conversion-optimized CTA for this page type.
+- Missing audience? Infer from vibe and page type.
+- Default colors (#111111/#C9A84C/#F5F0E8)? Choose a complete 5-color palette that perfectly matches the mood.
 
-If brandName is missing or generic ("Your Brand") — invent a compelling brand name that fits the vibe.
-If headline is missing or starts with "Welcome to" — write the most compelling headline you can for this type of brand.
-If ctaText is missing or is "Get Started" — choose the most conversion-optimized CTA for this page type.
-If audience is missing or is "general" — infer the most likely audience from the vibe and page type.
-If heroImageDescription is missing — select the best Unsplash image for the vibe.
-If colors are default (#111111/#C9A84C/#F5F0E8) — choose a complete color palette that perfectly matches the mood and vibe.
+For content you invent, add class="ai-generated" to the element.
 
-For every piece of content you invent (headline, brand story, CTA, section copy) — place this HTML comment directly above the element:
-<!-- AI generated — click to customize -->
-And add this class to the element: class="ai-generated" (append to existing classes).
+REQUIRED CREATIVE DECISIONS — you must make ALL of these independently:
 
-CREATIVE DECISIONS — announce in an HTML comment at the top:
+1. TYPOGRAPHY PAIRING — choose two fonts that create tension and harmony. Not safe choices. Examples: Cormorant Garamond + Space Grotesk for luxury. Bebas Neue + Inter for streetwear. Playfair Display + DM Mono for editorial. The pairing must feel intentional and slightly unexpected.
+
+2. COLOR HARMONY — build a complete 5-color system: background, surface, primary text, accent, highlight. The system must have contrast, depth, and personality.
+
+3. SECTION ARCHITECTURE — decide which sections exist and in what order based on brand type. A DJ site: hero → upcoming shows → sound samples → booking → press → footer. A restaurant: hero → philosophy → menu preview → reservation → story → footer. Not every site uses the same template.
+
+4. MOTION PERSONALITY — choose one: Cinematic (slow, dramatic, large movements), Electric (fast, snappy, high energy), Organic (flowing, gentle, nature-inspired), Editorial (precise, controlled, typographic), Raw (aggressive, glitchy, punk). Apply consistently.
+
+5. ATMOSPHERE LAYER — choose one dominant: Grain (film texture 3-8%), Fog (radial gradients shifting on scroll), Orbs (floating blurred color spheres), Static (noise texture), Void (deep blacks with light bleed). Apply throughout.
+
+6. SECTION HEADINGS — write headings that sound like this brand, not a template. Not "About Us" — maybe "The Story" or "Built Different" or "Where It Started" or "The Philosophy."
+
+7. UNEXPECTED DETAIL — add one design detail the user would never ask for. Examples: a subtle sound wave SVG pulsing in the hero for a DJ site. A rotating botanical illustration at 4% opacity for wellness. A ticker tape of press mentions for a portfolio. A live countdown for events.
+
+CREATIVE DECISIONS COMMENT — announce ALL decisions at the top of the HTML:
 <!-- CREATIVE DECISIONS
-Typography: [display font] + [body font]
-Motion vocabulary: [list]
-Color temperature: [warm/cool/neutral]
-Section order: [list]
-Atmosphere: [grain/orbs/gradients]
-Autonomous decisions: [list what you invented]
+Typography: [fonts] — [why this pairing]
+Color system: [palette name you invent] — [mood it creates]
+Motion personality: [chosen] — [how it feels]
+Atmosphere: [chosen layer] — [effect]
+Sections: [actual section names in order]
+Section headings: [actual headings written]
+Unexpected detail: [what and why]
+Brand voice: [adjectives for the copy voice]
+Hero treatment: [layout decision and why]
+Overall direction: [one sentence creative brief you wrote for yourself]
 -->
 
-TYPOGRAPHY: Choose TWO Google Fonts. Display + Body. Load via <link>. Use clamp() for fluid sizing.
+MOTION SYSTEM — implement based on chosen Motion Personality:
 
-REQUIRED MOTION SYSTEM — every generated site must include ALL of the following:
+a) SCROLL ANIMATIONS via IntersectionObserver (threshold 0.15). Classes: .fade-up, .fade-in, .slide-left, .slide-right, .scale-up, .line-reveal. No two adjacent sections same animation. Stagger children 100ms. Bidirectional reset.
 
-a) SCROLL ANIMATIONS — use IntersectionObserver (threshold 0.15). Every section entrance uses one of these CSS classes applied via JS: .fade-up (opacity 0→1, translateY 20px→0), .fade-in (opacity 0→1), .slide-left (translateX -40px→0), .slide-right (translateX 40px→0), .scale-up (scale 0.95→1), .line-reveal (clip-path: inset(0 100% 0 0)→inset(0 0% 0 0)). No two adjacent sections use the same animation class. Stagger child elements inside sections by 100ms each using data-delay attributes. Bidirectional: reset when leaving viewport.
+b) PARALLAX HERO — bg image 0.4x scroll, headline 0.15x opposite direction.
 
-b) PARALLAX HERO — the hero background image moves at 0.4x scroll speed using a scroll event listener and transform: translateY(). The hero headline moves at 0.15x scroll speed in the OPPOSITE direction. Creates depth.
+c) TEXT SPLIT — hero headline splits into words on load. Each word fades up with 80ms stagger via splitText() wrapping words in inline-block spans.
 
-c) TEXT SPLIT ANIMATION — the hero headline splits into individual words on load. Each word fades up with 80ms stagger. Implement a splitText() function that wraps each word in a <span style="display:inline-block;opacity:0;transform:translateY(15px)"> and then animates each span sequentially.
+d) MARQUEE — continuous scroll 30s linear infinite. Hover slows to 60s. Duplicated content, translateX(-50%).
 
-d) MARQUEE STRIP — continuous horizontal scroll using CSS animation: scroll 30s linear infinite. On hover — transition to 60s speed. Uses translateX(-50%) on duplicated content. Smooth transition: transition: animation-duration 0.5s.
+e) CURSOR (desktop @media(pointer:fine)) — Gold dot 8px, lerp factor 0.15. Chasing ring 24px, lerp 0.08. Hover: dot scale 0, ring scale 2x + fill 20% opacity.
 
-e) CUSTOM CURSOR (REQUIRED, desktop only via @media(pointer:fine)):
-   Gold dot: 8px, background #C9A84C, follows mouse with 8ms lag using lerp: x += (targetX - x) * 0.15 via requestAnimationFrame.
-   Chasing ring: 24px diameter, border 1.5px solid #C9A84C, follows with 80ms lag: x += (targetX - x) * 0.08.
-   On hover over links/buttons: dot scales to 0, ring scales to 2x and fills rgba(201,168,76,0.2).
-   Both: position fixed, pointer-events none, z-index 9999/9998, border-radius 50%.
+f) SECTION BG SHIFT — body background-color shifts ±5% lightness per section via IntersectionObserver threshold 0.5. Transition 0.8s.
 
-f) SECTION BACKGROUND SHIFT — as user scrolls past 50% of each section, the body background-color subtly shifts ±5% lightness using CSS transition on body (transition: background-color 0.8s ease). Use IntersectionObserver with threshold 0.5. Each section has a data-bg attribute with a slightly shifted background color.
+g) FLOATING ORBS — 3 blurred gradients 80-120px, opacity 0.08-0.12, separate keyframes 8-12s, in hero + atmosphere.
 
-g) FLOATING ORBS — 3 blurred circular gradients (80-120px, opacity 0.08-0.12) positioned absolutely in the hero and atmosphere sections. Each orb has a separate CSS keyframe animation at 8-12s duration with slight rotation and translation. Uses the accent color as base: radial-gradient(circle, accent_color_at_opacity, transparent 70%).
+h) GRAIN — SVG feTurbulence ::after overlay 3-5% opacity.
 
-h) GRAIN TEXTURE — overlay at 3-5% opacity using SVG feTurbulence filter as background-image on a ::after pseudo-element covering the page.
+i) NAV — transparent → solid on scroll past 80px.
 
-i) NAV — transparent → solid background on scroll past 80px threshold. Transition: background-color 0.3s, backdrop-filter 0.3s.
-
-AI-GENERATED CONTENT HOVER INDICATOR:
-Include this CSS rule:
+AI-GENERATED HOVER INDICATOR:
 .ai-generated{position:relative;transition:outline 0.2s}
 .ai-generated:hover{outline:1px dashed rgba(201,168,76,0.3);outline-offset:4px}
 
-REQUIRED SECTION STRUCTURE (7 sections in this order):
-1. Hero — full screen (min-height:100svh), parallax background, headline with text split + CTA button + inline email form
-2. Marquee strip — scrolling brand keywords, slows on hover
-3. Feature/Collection section — relevant to pageType
-4. Brand story — two-column layout
-5. Atmosphere section — full-bleed image with overlay, floating orbs
-6. Email capture — prominent CTA section
-7. Footer — brand name, copyright, placeholder links, then the Irie Builder HTML comment
-
-RESPONSIVE: grids→1col at 768px, clamp() typography, 44px touch targets, overflow-x:hidden, forms stack at 480px
-ACCESSIBILITY: prefers-reduced-motion disables ALL animations/motion, heading hierarchy, alt text, 4.5:1 contrast, focus indicators, labeled form inputs
+RESPONSIVE: grids→1col 768px, clamp() typography, 44px touch targets, overflow-x:hidden
+ACCESSIBILITY: prefers-reduced-motion disables ALL, heading hierarchy, alt text, 4.5:1 contrast, focus indicators
 META: DOCTYPE, lang, charset, viewport, OG tags, title
 
-OUTPUT: Return ONLY the complete HTML. No markdown. No backticks. No explanation. Self-contained with inline <style> and <script>. Only external resource: Google Fonts <link>.
+End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
 
-Be concise with CSS. Combine selectors. Use shorthand. Keep under 8000 tokens.`
+OUTPUT: ONLY complete HTML. No markdown. No backticks. No explanation. Inline <style> and <script>. External: Google Fonts <link> only. Under 8000 tokens.`
 
 export async function POST(request: Request) {
   try {
@@ -171,9 +190,9 @@ export async function POST(request: Request) {
       return jsonError('Invalid JSON in request body', 400)
     }
 
-    // FIX 4: Relax validation — allow sparse input, only require vibe OR brandName
-    if (!body.brandName && !body.vibe) {
-      return jsonError('Please provide at least a brand name or vibe description', 400)
+    // Allow rawBrief as sole input
+    if (!body.rawBrief && !body.brandName && !body.vibe) {
+      return jsonError('Please provide at least a vision, brand name, or vibe', 400)
     }
     if (!body.colors?.primary) {
       body.colors = { primary: '#111111', accent: '#C9A84C', background: '#F5F0E8' }
@@ -186,57 +205,64 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, timeout: 55000 })
 
-    // FIX 1: Determine hero image with proper selection
+    // Hero image selection
+    const vibeForImage = body.rawBrief || body.vibe || ''
     let heroImage = ''
     if (body.heroImageUrl && body.heroImageUrl.match(/^https?:\/\//i)) {
       heroImage = body.heroImageUrl
     } else {
       heroImage = selectHeroImage(
-        body.vibe || '',
+        vibeForImage,
         body.heroImageDescription || '',
         body.pageType || 'landing',
         body.mood || 'dark',
-        body.brandName || '',
+        body.brandName || body.rawBrief || '',
       )
     }
 
-    // Detect sparse input for the response metadata
-    const isSparse = !body.headline || !body.audience || body.audience === 'general'
-      || !body.ctaText || body.ctaText === 'Get Started'
-      || body.brandName === 'Your Brand' || !body.brandName
-
     const feedbackLine = body.userFeedback
-      ? `\nUSER FEEDBACK (HIGHEST PRIORITY — adjust the site based on this): ${body.userFeedback}`
+      ? `\nUSER FEEDBACK (HIGHEST PRIORITY): ${body.userFeedback}`
       : ''
 
     const heroDescLine = body.heroImageDescription
-      ? `\nHero Image Description (the user described what they want — use the provided URL but let this influence the mood): ${body.heroImageDescription}`
+      ? `\nHero Image Description: ${body.heroImageDescription}`
       : ''
 
-    const sparseNote = isSparse
-      ? `\nNOTE: Input is sparse. Activate AUTONOMOUS CREATIVE DIRECTOR MODE. Make bold, confident creative decisions. Invent compelling content for anything missing. Mark all invented content with the "ai-generated" class and <!-- AI generated --> comments.`
-      : ''
+    let userPrompt: string
 
-    const userPrompt = `Create a complete website for this brand:
+    if (body.rawBrief) {
+      // RAWBRIEF MODE — single sentence becomes everything
+      userPrompt = `RAW BRIEF: "${body.rawBrief}"
 
-Brand Name: ${body.brandName || '(none provided — invent one)'}
-Hero Headline: ${body.headline || '(none provided — write a compelling one)'}
-CTA Button Text: ${body.ctaText || '(none provided — choose the best one)'}
-Hero Background Image URL: ${heroImage}${heroDescLine}
-Emotional Brief / Vibe: ${body.vibe || '(minimal — use your creative judgment)'}
-Target Audience: ${body.audience || '(not specified — infer from vibe)'}
+Hero Background Image URL: ${heroImage}
 Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
 Mood: ${body.mood || 'dark'}
-Page Type: ${body.pageType || 'landing'}${feedbackLine}${sparseNote}
+Page Type: ${body.pageType || 'landing'}${feedbackLine}
 
-REMINDERS:
-- If the user provided headline/CTA, use them VERBATIM — do not rephrase
-- If fields are missing, invent compelling content and mark with class="ai-generated"
-- Use the provided hero image URL as the hero background
-- Include ALL motion: parallax (hero bg 0.4x + headline 0.15x opposite), splitText() on headline, bidirectional IntersectionObserver with 6 animation classes, custom cursor (gold dot lerp + chasing ring), floating orbs (3, 80-120px, 8-12s keyframes), section background shift, grain, marquee (30s, slows on hover), nav scroll
-- 7 sections: hero → marquee → features → brand story → atmosphere → email capture → footer
-- End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
-- Output ONLY HTML`
+This is a raw brief — one sentence. Extract or invent everything: brand name, type, mood, audience, headlines, CTA, section architecture. Make bold creative decisions. Mark invented content with class="ai-generated".
+
+Include the CREATIVE DECISIONS comment block at the top with all 10 decisions.
+Include ALL motion, cursor, orbs, grain, marquee, parallax, text split.
+Output ONLY HTML.`
+    } else {
+      userPrompt = `Create a complete website for this brand:
+
+Brand Name: ${body.brandName || '(invent one)'}
+Hero Headline: ${body.headline || '(write a compelling one)'}
+CTA Button Text: ${body.ctaText || '(choose the best)'}
+Hero Background Image URL: ${heroImage}${heroDescLine}
+Emotional Brief / Vibe: ${body.vibe || '(use creative judgment)'}
+Target Audience: ${body.audience || '(infer from vibe)'}
+Colors: Primary ${body.colors.primary}, Accent ${body.colors.accent}, Background ${body.colors.background}
+Mood: ${body.mood || 'dark'}
+Page Type: ${body.pageType || 'landing'}${feedbackLine}
+
+${(!body.headline || !body.audience || !body.ctaText) ? 'Input is sparse — activate AUTONOMOUS MODE. Make bold decisions. Mark invented content with class="ai-generated".' : 'User provided specific content — use their headline/CTA VERBATIM.'}
+
+Include the CREATIVE DECISIONS comment block at the top with all 10 decisions.
+Include ALL motion, cursor, orbs, grain, marquee, parallax, text split.
+Output ONLY HTML.`
+    }
 
     let html: string
     try {
@@ -252,7 +278,7 @@ REMINDERS:
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown API error'
       if (msg.includes('timeout') || msg.includes('abort') || msg.includes('ETIMEDOUT')) {
-        return jsonError('Generation timed out. The AI took too long — please try again.', 504)
+        return jsonError('Generation timed out. The AI took too long \u2014 please try again.', 504)
       }
       if (msg.includes('rate_limit')) {
         return jsonError('Rate limited by AI provider. Please wait 60 seconds and try again.', 429)
@@ -268,6 +294,9 @@ REMINDERS:
     }
 
     html = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
+
+    // Extract creative decisions from the HTML comment
+    const decisions = extractDecisions(html)
 
     // Extract metadata
     const fonts: string[] = []
@@ -293,7 +322,8 @@ REMINDERS:
     return NextResponse.json({
       html,
       metadata: { fonts, sections, palette: body.colors, motionVocabulary },
-      sparse: isSparse,
+      decisions,
+      sparse: !!body.rawBrief || !body.headline || !body.audience,
     })
   } catch (err: unknown) {
     console.error('[generate] Unhandled error:', err)
