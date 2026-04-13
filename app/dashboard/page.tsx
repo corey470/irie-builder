@@ -250,7 +250,7 @@ export default function DashboardPage() {
       ? `${mergedVibe} — User feedback: ${feedback}`
       : mergedVibe
 
-    if (!brandName.trim() || !finalVibe.trim()) return
+    if (!brandName.trim() && !finalVibe.trim()) return
 
     setLoading(true)
     setError(null)
@@ -300,11 +300,16 @@ export default function DashboardPage() {
       }
 
       // Show completion messages
+      const wasSparse = !!(data.sparse)
       setChatPhase('complete')
       setMessages(prev => [...prev, { role: 'ai', text: "There's no perfect website. Only one that feels right to you." }])
 
       setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'ai', text: 'Does this feel right? Or should we adjust something?' }])
+        if (wasSparse) {
+          setMessages(prev => [...prev, { role: 'ai', text: "I made some creative decisions for you — the outlined elements are places you can personalize. What would you like to change?" }])
+        } else {
+          setMessages(prev => [...prev, { role: 'ai', text: 'Does this feel right? Or should we adjust something?' }])
+        }
         setChatPhase('feedback')
       }, 1500)
     } catch (e: unknown) {
@@ -746,7 +751,7 @@ const dashboardCSS = `
   .db-preset-pill:hover{background:var(--gold-dim);color:var(--text)}
 
   /* ── CHAT INTERFACE ── */
-  .chat{background:var(--chat-bg);border-radius:12px;display:flex;flex-direction:column;max-height:380px;position:relative}
+  .chat{background:var(--chat-bg);border-radius:12px;display:flex;flex-direction:column;max-height:380px;position:relative;overflow-x:hidden;width:100%}
 
   /* progress dots */
   .chat-progress{display:flex;align-items:center;gap:6px;padding:12px 16px 0;flex-shrink:0}
@@ -762,7 +767,7 @@ const dashboardCSS = `
   .chat-messages::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
   /* bubbles */
-  .chat-bubble{max-width:88%;line-height:1.5;animation:chatFadeIn 0.3s ease-out}
+  .chat-bubble{max-width:88%;line-height:1.5;animation:chatFadeIn 0.3s ease-out;word-break:break-word;overflow-wrap:break-word;white-space:pre-wrap;box-sizing:border-box}
   .chat-bubble--ai{align-self:flex-start;color:var(--gold);font-family:'Syne',system-ui,sans-serif;font-size:14px;padding:0}
   .chat-bubble--user{align-self:flex-end;background:var(--chat-user-bg);color:var(--text);font-size:13px;padding:8px 14px;border-radius:12px 12px 4px 12px}
   @keyframes chatFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
@@ -776,7 +781,7 @@ const dashboardCSS = `
 
   /* input row */
   .chat-input-row{display:flex;gap:8px;padding:8px 12px 12px;border-top:1px solid rgba(201,168,76,0.1);flex-shrink:0}
-  .chat-input{flex:1;background:var(--chat-user-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:16px;line-height:1.4;transition:border-color 0.2s}
+  .chat-input{flex:1;background:var(--chat-user-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:16px;line-height:1.4;transition:border-color 0.2s;min-width:0;box-sizing:border-box;word-break:break-word;overflow-wrap:break-word}
   .chat-input:focus{outline:none;border-color:var(--gold)}
   .chat-input::placeholder{color:var(--muted);font-size:12px}
   .chat-send{width:44px;height:44px;border-radius:8px;background:var(--gold);border:none;color:var(--black);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:box-shadow 0.2s}
