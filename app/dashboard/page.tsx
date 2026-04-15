@@ -906,7 +906,7 @@ const dashboardCSS = `
 
   .db-colors{display:flex;gap:12px}
   .db-color-item{display:flex;align-items:center;gap:8px}
-  .db-color-item input[type="color"]{width:36px;height:36px;border:1px solid var(--border);border-radius:var(--radius);padding:2px;background:var(--black);cursor:pointer}
+  .db-color-item input[type="color"]{width:44px;height:44px;border:1px solid var(--border);border-radius:var(--radius);padding:2px;background:var(--black);cursor:pointer}
   .db-color-item span{font-size:11px;color:var(--muted);line-height:1.4}
   .db-color-item code{font-size:10px;color:var(--text);font-family:'Syne',monospace}
 

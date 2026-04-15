@@ -114,6 +114,19 @@ function buildBrief(md: string): string {
   if (donts.length) {
     lines.push("## Don't", ...donts.map((d) => `- ${d}`), '')
   }
+  lines.push(
+    '## Mobile-first (mandatory)',
+    '- Phone is primary (375px); desktop is the enhancement.',
+    '- Hero headlines use clamp() — e.g. font-size: clamp(2.25rem, 7vw, 6rem); never a fixed px size.',
+    '- Tap targets ≥ 44px on buttons/links/inputs (min-height:44px, padding ≥ 12px vertical).',
+    '- Stack CTAs on mobile with flex-direction: column; go row at ≥ 640px. Buttons full-width on mobile.',
+    '- Grids: single column on mobile; 2–3 columns only at ≥ 768px via @media (min-width: 768px).',
+    '- Inputs/textareas: font-size ≥ 16px on mobile (prevents iOS zoom on focus) + width:100%.',
+    '- Side padding: ≥ 16px on mobile (px-4), ≥ 24px on tablet+. No edge-touching content.',
+    '- Images: max-width:100%; height:auto — never overflow the container.',
+    '- Nothing < 14px body / < 12px label on mobile. Use rem/clamp for fluid scale.',
+    '',
+  )
   lines.push('See DESIGN.md in the repo root for the full spec.')
   lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   return lines.join('\n')
