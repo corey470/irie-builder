@@ -81,6 +81,42 @@ function extractKeyChars(sec1: string): string[] {
     .slice(0, 3)
 }
 
+/**
+ * From a section block, grab the first N bullets appearing after the
+ * given sub-heading ("### Heading"). Stops at the next "###" or section
+ * boundary.
+ */
+/**
+ * Compressed universal Mobile + Psychology rules. The full narrative
+ * lives in DESIGN.md §10 and §11 (reference-quality prose for humans).
+ * For the generator we ship a tight hand-crafted block so the total
+ * brief stays under the ~2.5k-char latency budget.
+ */
+const MOBILE_RULES: readonly string[] = [
+  'Design at 375px first, scale up',
+  'Touch targets min 44×44px',
+  'No horizontal scroll, ever',
+  'Inputs + primary CTAs full-width on mobile',
+  'clamp() for hero type; body min 16px (prevents iOS input zoom)',
+  'Content never touches edges (min 16px gutter)',
+  'Primary CTA in bottom-third thumb zone on mobile',
+  'Modals go full-screen on mobile',
+  'Tables: horizontal-scroll container or stack as cards at <sm',
+] as const
+
+const PSYCH_RULES: readonly string[] = [
+  'Motion captures attention before thought — use scroll reveals intentionally',
+  'Accent on canvas only for headlines + primary CTAs (high contrast draws the eye)',
+  'Social proof directly before the CTA, not at the bottom',
+  'Specific numbers beat vague claims ("312 orders this month" > "many customers")',
+  'Frame as loss avoidance, not gain ("never miss a customer" > "get more customers")',
+  'One primary CTA per section — decision paralysis kills conversion',
+  '80% read only the headline — make it carry the full message alone',
+  'Above the fold is worth 5× below — lead with value prop + CTA',
+  'Short paragraphs (≤3 sentences); subheadings every 2-3 paragraphs',
+  'Only use scarcity when true — fake urgency destroys trust permanently',
+] as const
+
 function buildBrief(md: string): string {
   if (!md) return ''
   const colors = extractColors(extractSection(md, 2))
@@ -89,14 +125,17 @@ function buildBrief(md: string): string {
   const sec7 = extractSection(md, 7)
   const dos = extractSubBullets(sec7, 'Do', 5)
   const donts = extractSubBullets(sec7, "Don't", 5)
+  const mobile = MOBILE_RULES
+  const psych = PSYCH_RULES
 
   const lines: string[] = [
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
     'BRAND DESIGN SYSTEM — READ FIRST',
     '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    'Every page you generate MUST honor these tokens. The short brief below',
-    'is authoritative — do NOT substitute generic blue/white/gray, do NOT',
-    'pick alternative fonts, do NOT skip the motion signatures.',
+    'Every page you generate MUST honor the tokens, mobile rules, and',
+    'psychology principles below. Do NOT substitute generic blue/white/gray,',
+    'do NOT pick alternative fonts, do NOT skip the motion signatures, do',
+    'NOT ignore the mobile or psychology rules — they are load-bearing.',
     '',
   ]
   if (colors.length) {
@@ -114,20 +153,13 @@ function buildBrief(md: string): string {
   if (donts.length) {
     lines.push("## Don't", ...donts.map((d) => `- ${d}`), '')
   }
-  lines.push(
-    '## Mobile-first (mandatory)',
-    '- Phone is primary (375px); desktop is the enhancement.',
-    '- Hero headlines use clamp() — e.g. font-size: clamp(2.25rem, 7vw, 6rem); never a fixed px size.',
-    '- Tap targets ≥ 44px on buttons/links/inputs (min-height:44px, padding ≥ 12px vertical).',
-    '- Stack CTAs on mobile with flex-direction: column; go row at ≥ 640px. Buttons full-width on mobile.',
-    '- Grids: single column on mobile; 2–3 columns only at ≥ 768px via @media (min-width: 768px).',
-    '- Inputs/textareas: font-size ≥ 16px on mobile (prevents iOS zoom on focus) + width:100%.',
-    '- Side padding: ≥ 16px on mobile (px-4), ≥ 24px on tablet+. No edge-touching content.',
-    '- Images: max-width:100%; height:auto — never overflow the container.',
-    '- Nothing < 14px body / < 12px label on mobile. Use rem/clamp for fluid scale.',
-    '',
-  )
-  lines.push('See DESIGN.md in the repo root for the full spec.')
+  if (mobile.length) {
+    lines.push('## Mobile-First (design at 375px, scale up)', ...mobile.map((m) => `- ${m}`), '')
+  }
+  if (psych.length) {
+    lines.push('## Psychology (convert distracted humans)', ...psych.map((p) => `- ${p}`), '')
+  }
+  lines.push('See DESIGN.md in the repo root for the full spec (sections 1-11).')
   lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   return lines.join('\n')
 }

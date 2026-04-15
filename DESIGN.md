@@ -292,3 +292,63 @@ The custom cursor (gold 12px dot + 40px 1px ring, fine-pointer only) expands on 
 7. Vanilla CSS, hand-authored — this surface exists to demonstrate motion craft
 8. `prefers-reduced-motion` disables everything decorative — orbs, grain, cursor, stagger
 9. Editorial flatness on radii (0-6px) — no soft-SaaS rounded corners on primary elements
+
+## 10. Mobile First Rules
+
+Mobile is where real users are. Every page, every flow, every component is designed at 375px first and scales up. Desktop is a stretched mobile layout, not the primary target.
+
+### Hard Rules
+- **Design viewport starts at 375px.** Every component must look correct and be usable at 375px wide before any larger breakpoint is considered.
+- **Touch targets minimum 44px.** All interactive elements — buttons, nav links, form controls, icon buttons — must present a 44×44px tap target. Pad small icon buttons with a transparent hit area if visual size must stay smaller.
+- **No horizontal scroll, ever.** Pages must fit within viewport width at every breakpoint. The only exception is a deliberate horizontally-scrollable component (carousel, over-wide table) clipped inside its own container.
+- **Full-width inputs and buttons on mobile.** Form fields and primary CTAs span the available content width on mobile. Never place two CTAs side-by-side on mobile — stack them vertically with the primary action on top.
+- **Fluid typography via `clamp()`.** All hero and section headlines use `clamp(min, vw, max)` so type scales continuously without breakpoint jumps. Minimum body size is 16px on mobile (prevents iOS input zoom on focus).
+- **Content never touches screen edges.** Minimum 16px (1rem) horizontal padding on every scrollable section. Use responsive padding tokens (`px-4 sm:px-6 lg:px-8` or `clamp(1rem, 5vw, 3rem)`).
+- **Thumb-zone awareness.** On mobile, the primary CTA lives in the bottom third of the screen where the thumb naturally rests. Sticky bottom-bar CTAs are acceptable for checkout, booking, and purchase flows.
+- **Modals go full-screen on mobile.** Dialogs smaller than the viewport are hard to read and harder to tap; drawer/sheet full-screen is the mobile default.
+- **Navigation collapses to a hamburger or bottom bar on mobile.** Never truncate or cut off menu items. The opened menu is full-screen or a full-height drawer, with 48px+ tap rows.
+- **Tables collapse or scroll.** Multi-column tables either wrap in an `overflow-x-auto` container or restructure as a stacked card list at `<sm`.
+- **Images are responsive.** `max-width: 100%; height: auto` is the floor; serve appropriate sizes via `srcset` or `next/image`. Images never overflow their container.
+- **Critical flows end-to-end on mobile.** Booking, checkout, signup, cart, and first-time-setup must all work flawlessly at 375px with no blocked interactions or clipped controls.
+
+### Platform-Specific Mobile Priority
+- **Transportation** — the booking form is the product. It must be flawless on a phone, end-to-end, from landing to confirmation.
+- **Suite** — pipeline kanban, conversations inbox, approvals must all work on mobile with one-thumb navigation.
+- **Commerce / Threads / Swag** — product grid → detail → cart → checkout must work end-to-end on 375px with no friction.
+- **Builder** — preset buttons, toggles, color pickers must be tappable with a thumb, not requiring a mouse.
+
+## 11. Psychology Layer
+
+Every page is a conversation with a distracted human brain. These rules bake evidence-based conversion psychology into the default output.
+
+### Attention & Motion
+- **Motion captures attention before conscious thought.** Use scroll reveals, subtle parallax on hero, and gentle floating elements. The brain is wired to notice movement — use it with restraint and intent.
+- **High-contrast elements draw the eye first.** Reserve the accent color on the canvas for headlines and primary CTAs only. Don't dilute it.
+- **Z-pattern / F-pattern scanning.** The eye enters top-left and follows a Z on visual-heavy layouts or an F on text-heavy ones. Place the most important message top-left. Place the primary CTA where the eye naturally lands at the end of the pattern.
+
+### Trust Building
+- **Warm colors build trust; cool corporate blues feel distant.** Gold, amber, earth tones — the Irie palette — are trust-positive by default.
+- **Social proof belongs directly before the CTA.** Testimonials at the bottom of a page convert worse than a single quote placed right above the button.
+- **Specific numbers beat vague claims.** "312 orders this month" outperforms "hundreds of happy customers." "Used by 47 solo operators" beats "trusted by pros." Write specifics.
+- **Consistency builds trust.** Every section feels like the same brand — same type system, same motion language, same palette. Inconsistency signals amateur.
+
+### Decision Making & Conversion
+- **Loss aversion > gain desire.** Frame benefits as what users won't lose. "Never miss a customer" > "get more customers." "Keep your inventory clean" > "better inventory management."
+- **One primary CTA per section.** Never two equal options side-by-side — it creates decision paralysis. Use a visually-weighted primary + muted secondary only when both are genuinely needed.
+- **Reduce friction relentlessly.** Every extra click, extra form field, extra choice loses users. Default to smart defaults; ask only what's essential.
+- **Anchor high.** If showing pricing, lead with the higher-value option so the actual price feels reasonable by comparison.
+
+### Reading Behavior
+- **80% read only the headline.** The headline must carry the full message alone — if someone reads nothing else, they still understand what this is and why they should care.
+- **Above the fold is worth 5× below the fold.** Most important message, clearest value prop, and primary CTA all visible before first scroll.
+- **Short sentences get read; long blocks get skipped.** Maximum three sentences per paragraph.
+- **Subheadings every 2–3 paragraphs.** People scan before they commit to reading.
+
+### Mobile Psychology
+- **The thumb rules.** Primary CTAs live in the bottom third of the mobile screen. Top-anchored navigation is fine; top-anchored primary CTAs are not.
+- **Scroll is engagement.** Each scroll reveal on mobile is a micro-commitment. Use reveals to drip value instead of front-loading every message in a wall of text.
+- **Speed is trust.** Every second of load time loses users. Above-the-fold content loads first; fonts preload; images are compressed and `loading="lazy"` for below-fold.
+
+### Scarcity & Urgency
+- **Only when true.** Fake urgency destroys trust permanently and immediately.
+- **State scarcity plainly when real.** "12 left" at true stock. "Drop closes Sunday 11pm" at a real deadline. Never invent timers, never invent countdowns.

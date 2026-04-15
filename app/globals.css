@@ -1,0 +1,45 @@
+/* ─────────────────────────────────────────────────────────────────────
+   Mobile-First Guardrails
+   ─────────────────────────────────────────────────────────────────────
+   Applied globally. These rules enforce the DESIGN.md §10 hard rules at
+   the stylesheet level so individual components don't have to remember.
+   ───────────────────────────────────────────────────────────────────── */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body {
+  overflow-x: hidden;
+}
+
+/* Prevent iOS Safari auto-zoom on focus of any text input. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}
+
+/* Minimum touch-target utility — WCAG 2.5.5 + DESIGN.md §10 44px rule. */
+.min-tap {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Safe-area padding helper for sticky bottom bars on iOS. */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+
+/* Reduced motion baseline. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
