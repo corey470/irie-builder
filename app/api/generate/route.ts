@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { buildDesignSystemBlock } from '@/lib/designSystemPrompt'
 
+export const runtime = 'nodejs'
 export const maxDuration = 60
 
 interface GenerateRequest {
@@ -16,6 +18,13 @@ interface GenerateRequest {
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
   userFeedback?: string
   rawBrief?: string
+  /**
+   * Optional: override the platform's own DESIGN.md with the calling
+   * platform's design system. Used by downstream proxies (e.g. Irie Threads
+   * via /api/build-page) so that generated pages match the caller's brand,
+   * not this builder's own brand.
+   */
+  brandDesignSystem?: string
 }
 
 interface CreativeDecision {
@@ -225,6 +234,9 @@ function postProcess(html: string): string {
 
 const SYSTEM_PROMPT = `You are the AI Creative Director for Irie Builder. Not a site builder — a creative director with taste, experience, and a point of view. Every generation must look like a REAL launched website from the first second it loads.
 
+BRAND DESIGN SYSTEM — HIGHEST PRIORITY:
+A full DESIGN.md has been provided above this prompt. It is the authoritative source for canvas color, accent color, display font, body font, motion signatures, and do's/don'ts. The colors/fonts/mood fields in the user message are SECONDARY — if they conflict with DESIGN.md, DESIGN.md wins. Never emit generic blue/white/gray palettes. Never substitute the specified fonts.
+
 COPY RULES — absolute:
 1. If the user provided a headline — use it VERBATIM
 2. If the user provided an about/brand story — use it VERBATIM
@@ -324,6 +336,10 @@ export async function POST(request: Request) {
 
     const client = new Anthropic({ apiKey, timeout: 55000 })
 
+    // Resolve the design system: caller-supplied wins (proxies forward their
+    // own platform DESIGN.md), else fall back to this repo's DESIGN.md.
+    const designSystemBlock = buildDesignSystemBlock(body.brandDesignSystem)
+
     // Detect category for image selection
     const vibeText = (body.rawBrief || body.vibe || '').toLowerCase()
     const category = detectCategory(vibeText + ' ' + (body.heroImageDescription || '') + ' ' + (body.pageType || ''))
@@ -406,10 +422,14 @@ REQUIREMENTS:
 
     let html: string
     try {
+      const systemWithDesign = designSystemBlock
+        ? `${designSystemBlock}\n\n${SYSTEM_PROMPT}`
+        : SYSTEM_PROMPT
+
       const response = await client.messages.create({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 8000,
-        system: SYSTEM_PROMPT,
+        system: systemWithDesign,
         messages: [{ role: 'user', content: userPrompt }],
       })
 
