@@ -1,39 +1,145 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-let cached: string | null = null
+/**
+ * Reads DESIGN.md at module init and extracts a condensed token brief
+ * (<2.5k chars) for injection into Anthropic system prompts.
+ *
+ * Why condensed: the full DESIGN.md is ~17k chars. Prepending that much
+ * context to every generation call pushed Vercel function duration past
+ * the 60s timeout. The condensed brief carries the essential tokens
+ * (colors, fonts, motion signatures, top do's/don'ts) — enough for the
+ * model to honor the brand without the latency cost.
+ *
+ * If DESIGN.md can't be read or parsed, callers still get an empty
+ * string (generation proceeds with the default system prompt).
+ */
 
-export function readDesignMd(): string {
-  if (cached !== null) return cached
+let cachedFull: string | null = null
+let cachedBrief: string | null = null
+
+function readDesignMdRaw(): string {
+  if (cachedFull !== null) return cachedFull
   try {
-    const p = path.join(process.cwd(), 'DESIGN.md')
-    cached = fs.readFileSync(p, 'utf8')
-    return cached
+    cachedFull = fs.readFileSync(path.join(process.cwd(), 'DESIGN.md'), 'utf8')
+    return cachedFull
   } catch (err) {
-    console.error('[designSystemPrompt] DESIGN.md not readable at repo root:', err)
-    cached = ''
+    console.error('[designSystemPrompt] DESIGN.md not readable:', err)
+    cachedFull = ''
     return ''
   }
 }
 
-export function buildDesignSystemBlock(overrideMd?: string): string {
-  const md = (overrideMd && overrideMd.trim()) || readDesignMd()
+function extractSection(md: string, n: number): string {
+  const start = new RegExp(`^## ${n}\\.[^\\n]*$`, 'm')
+  const end = new RegExp(`^## ${n + 1}\\.[^\\n]*$`, 'm')
+  const s = md.search(start)
+  if (s < 0) return ''
+  const rest = md.slice(s)
+  const e = rest.search(end)
+  return e < 0 ? rest : rest.slice(0, e)
+}
+
+function extractSubBullets(block: string, heading: string, limit: number): string[] {
+  const h = block.search(new RegExp(`^### ${heading}\\s*$`, 'm'))
+  if (h < 0) return []
+  const rest = block.slice(h)
+  const next = rest.slice(1).search(/^###\s/m)
+  const body = next < 0 ? rest : rest.slice(0, next + 1)
+  return [...body.matchAll(/^-\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .slice(0, limit)
+}
+
+function extractColors(sec2: string): string[] {
+  const re = /^-\s*\*\*([^*]+)\*\*[^\n]*?(#[0-9A-Fa-f]{3,8})/gm
+  const seen = new Set<string>()
+  const out: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(sec2)) !== null) {
+    const key = m[2].toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(`${m[1].trim()} ${m[2]}`)
+    if (out.length >= 6) break
+  }
+  return out
+}
+
+function extractFonts(sec3: string): string[] {
+  const block = (sec3.match(/### Font Family[\s\S]*?(?=\n###|\n##|$)/) || [''])[0]
+  return [...block.matchAll(/\*\*(Display|Body)\*\*:\s*`?([^`\n,]+?)`?\s*(?:\(|,|\n)/g)].map(
+    (m) => `${m[1]}: ${m[2].trim()}`,
+  )
+}
+
+function extractKeyChars(sec1: string): string[] {
+  const idx = sec1.indexOf('**Key Characteristics:**')
+  if (idx < 0) return []
+  return [...sec1.slice(idx).matchAll(/^-\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .slice(0, 3)
+}
+
+function buildBrief(md: string): string {
   if (!md) return ''
-  return [
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    'BRAND DESIGN SYSTEM — AUTHORITATIVE. READ FIRST.',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    'This is the complete DESIGN.md for the platform you are generating for.',
-    'Every page you produce MUST honor these tokens — colors, fonts, motion,',
-    'components, spacing, and the Do/Don\'t rules. Do NOT substitute generic',
-    'blue/white/gray palettes. Do NOT pick alternative fonts. Do NOT skip the',
-    'signature motion or depth primitives. If the Do\'s/Don\'ts conflict with a',
-    'request, the DESIGN.md rule wins.',
+  const colors = extractColors(extractSection(md, 2))
+  const fonts = extractFonts(extractSection(md, 3))
+  const keyChars = extractKeyChars(extractSection(md, 1))
+  const sec7 = extractSection(md, 7)
+  const dos = extractSubBullets(sec7, 'Do', 5)
+  const donts = extractSubBullets(sec7, "Don't", 5)
+
+  const lines: string[] = [
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    'BRAND DESIGN SYSTEM — READ FIRST',
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    'Every page you generate MUST honor these tokens. The short brief below',
+    'is authoritative — do NOT substitute generic blue/white/gray, do NOT',
+    'pick alternative fonts, do NOT skip the motion signatures.',
     '',
-    md,
-    '',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-    'END DESIGN SYSTEM — resume the generator task below.',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-  ].join('\n')
+  ]
+  if (colors.length) {
+    lines.push('## Colors', ...colors.map((c) => `- ${c}`), '')
+  }
+  if (fonts.length) {
+    lines.push('## Typography', ...fonts.map((f) => `- ${f}`), '')
+  }
+  if (keyChars.length) {
+    lines.push('## Motion & Identity', ...keyChars.map((k) => `- ${k}`), '')
+  }
+  if (dos.length) {
+    lines.push('## Do', ...dos.map((d) => `- ${d}`), '')
+  }
+  if (donts.length) {
+    lines.push("## Don't", ...donts.map((d) => `- ${d}`), '')
+  }
+  lines.push('See DESIGN.md in the repo root for the full spec.')
+  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  return lines.join('\n')
+}
+
+/**
+ * Returns the condensed design brief (<2.5k chars). Accepts an optional
+ * `overrideMd` so downstream proxies can pass their own platform's
+ * DESIGN.md content — the brief is extracted from whichever source is
+ * provided.
+ */
+export function buildDesignSystemBlock(overrideMd?: string): string {
+  if (overrideMd && overrideMd.trim()) {
+    // Extract from the caller-supplied DESIGN.md (not cached — caller may
+    // vary per request).
+    return buildBrief(overrideMd)
+  }
+  if (cachedBrief !== null) return cachedBrief
+  cachedBrief = buildBrief(readDesignMdRaw())
+  return cachedBrief
+}
+
+/**
+ * Return the raw DESIGN.md contents (for callers that want to forward
+ * the full spec to an upstream service that will do its own extraction).
+ */
+export function readDesignMd(): string {
+  return readDesignMdRaw()
 }
