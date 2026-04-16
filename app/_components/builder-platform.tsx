@@ -564,6 +564,12 @@ function resolveBrandName(brief: BriefState, generation: GenerationSnapshot | nu
   )
 }
 
+function resolveBriefExcerpt(brief: BriefState | null) {
+  if (!brief) return 'No saved vision yet.'
+  const source = brief.briefInput.trim() || brief.vibeText.trim() || brief.answers[1]?.trim() || ''
+  return source ? `${source.slice(0, 60)}${source.length > 60 ? '…' : ''}` : 'No saved vision yet.'
+}
+
 function summarizeCloneAnalysis(cloneAnalysis: CloneAnalysis) {
   return `Found: ${cloneAnalysis.sections.length} sections — ${cloneAnalysis.sections.join(', ')}. Style: ${cloneAnalysis.style}, ${cloneAnalysis.colorMood}, ${cloneAnalysis.typographyStyle}. Pacing: ${cloneAnalysis.pacing}.`
 }
@@ -623,6 +629,7 @@ function summarizeChange(previous: GenerationSnapshot | null, current: Generatio
 
 interface EditableTextItem {
   id: string
+  tagName: string
   label: string
   text: string
 }
@@ -669,7 +676,12 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
     const id = `text-${index + 1}`
     element.setAttribute('data-irie-edit-id', id)
     element.setAttribute('data-irie-editable', 'text')
-    textItems.push({ id, label: labelTextElement(element.tagName.toLowerCase(), index, text), text })
+    textItems.push({
+      id,
+      tagName: element.tagName.toLowerCase(),
+      label: labelTextElement(element.tagName.toLowerCase(), index, text),
+      text,
+    })
   })
 
   Array.from(doc.querySelectorAll('img')).forEach((element, index) => {
@@ -922,20 +934,56 @@ function PlatformNav({
   current: 'dashboard' | 'brief' | 'generate' | 'edit' | 'publish'
   action?: ReactNode
 }) {
-  const hasGeneration = useGenerationPresence()
-
   return (
     <header className="platform-nav">
       <Link href="/" className="platform-wordmark">IrieBuilder</Link>
       <div className="platform-nav-right">
         <nav className="platform-nav-links" aria-label="Platform">
           <Link href="/dashboard" className={current === 'dashboard' ? 'is-active' : ''}>Projects</Link>
-          <Link href="/brief" className={current === 'brief' ? 'is-active' : ''}>Brief</Link>
-          {hasGeneration && (
-            <Link href="/generate" className={current === 'generate' ? 'is-active' : ''}>Generate</Link>
-          )}
         </nav>
         {action ? <div className="platform-nav-action">{action}</div> : null}
+      </div>
+    </header>
+  )
+}
+
+const FLOW_STEPS = [
+  { key: 'brief', label: 'Brief', href: '/brief' },
+  { key: 'generate', label: 'Generate', href: '/generate' },
+  { key: 'edit', label: 'Edit', href: '/edit' },
+  { key: 'publish', label: 'Publish', href: '/publish' },
+] as const
+
+function FlowIndicator({ current }: { current: 'brief' | 'generate' | 'edit' | 'publish' }) {
+  return (
+    <nav className="platform-flow-indicator" aria-label="Build flow">
+      {FLOW_STEPS.map((step, index) => (
+        <span key={step.key} className={`platform-flow-step ${step.key === current ? 'is-active' : ''}`}>
+          <span>{step.label}</span>
+          {index < FLOW_STEPS.length - 1 && <span className="platform-flow-separator">→</span>}
+        </span>
+      ))}
+    </nav>
+  )
+}
+
+function FlowHeader({
+  current,
+  backHref,
+  backLabel,
+  right,
+}: {
+  current: 'brief' | 'generate' | 'edit' | 'publish'
+  backHref: string
+  backLabel: string
+  right?: ReactNode
+}) {
+  return (
+    <header className="platform-flow-header">
+      <Link href={backHref} className="platform-text-link">{backLabel}</Link>
+      <FlowIndicator current={current} />
+      <div className="platform-flow-header-actions">
+        {right}
       </div>
     </header>
   )
@@ -988,6 +1036,13 @@ function AgentStatusRow({
   )
 }
 
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
 function AccordionCard({
   title,
   open,
@@ -1012,9 +1067,22 @@ function AccordionCard({
 
 export function ProjectsHomePage() {
   const [lastGeneration, setLastGeneration] = useState<GenerationSnapshot | null>(null)
+  const [savedBrief, setSavedBrief] = useState<BriefState | null>(null)
 
   useEffect(() => {
-    setLastGeneration(readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null))
+    const sync = () => {
+      setLastGeneration(readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null))
+      setSavedBrief(readStorage<BriefState | null>(BRIEF_STORAGE_KEY, null))
+    }
+
+    sync()
+    window.addEventListener('storage', sync)
+    window.addEventListener(STORAGE_EVENT_NAME, sync as EventListener)
+
+    return () => {
+      window.removeEventListener('storage', sync)
+      window.removeEventListener(STORAGE_EVENT_NAME, sync as EventListener)
+    }
   }, [])
 
   return (
@@ -1049,10 +1117,14 @@ export function ProjectsHomePage() {
                   />
                 </div>
                 <div className="platform-recent-card">
+                  <span className="platform-recent-label">Last build</span>
                   <strong>{lastGeneration.blueprint?.brandCore?.brandName || 'Last Generation'}</strong>
-                  <p>{lastGeneration.critique?.verdict || 'Your latest pass is ready to reopen.'}</p>
+                  <p>{resolveBriefExcerpt(savedBrief)}</p>
                   <span>{new Date(lastGeneration.createdAt).toLocaleString()}</span>
-                  <Link href="/generate" className="platform-secondary-btn">Continue →</Link>
+                  <div className="platform-recent-actions">
+                    <Link href="/generate" className="platform-secondary-btn">Continue →</Link>
+                    <Link href="/edit" className="platform-text-link">Edit →</Link>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1073,6 +1145,7 @@ export function BriefPage() {
   const [brief, setBrief] = useState<BriefState>(defaultBriefState())
   const [loaded, setLoaded] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [hasGeneration, setHasGeneration] = useState(false)
   const [cloneLoading, setCloneLoading] = useState(false)
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [openSections, setOpenSections] = useState({
@@ -1086,6 +1159,7 @@ export function BriefPage() {
   useEffect(() => {
     const saved = readStorage<BriefState>(BRIEF_STORAGE_KEY, defaultBriefState())
     setBrief({ ...defaultBriefState(), ...saved })
+    setHasGeneration(Boolean(readStorage(LAST_GENERATION_STORAGE_KEY, null)))
     setLoaded(true)
   }, [])
 
@@ -1099,6 +1173,16 @@ export function BriefPage() {
     const active = document.querySelector<HTMLInputElement>('[data-brief-chat-input="true"]')
     active?.focus()
   }, [brief.chatExpanded, isTyping])
+
+  useEffect(() => {
+    const sync = () => setHasGeneration(Boolean(readStorage(LAST_GENERATION_STORAGE_KEY, null)))
+    window.addEventListener('storage', sync)
+    window.addEventListener(STORAGE_EVENT_NAME, sync as EventListener)
+    return () => {
+      window.removeEventListener('storage', sync)
+      window.removeEventListener(STORAGE_EVENT_NAME, sync as EventListener)
+    }
+  }, [])
 
   function updateBrief<K extends keyof BriefState>(key: K, value: BriefState[K]) {
     setBrief(prev => ({ ...prev, [key]: value }))
@@ -1271,7 +1355,12 @@ export function BriefPage() {
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
-        <PlatformNav current="brief" />
+        <FlowHeader
+          current="brief"
+          backHref="/dashboard"
+          backLabel="← Projects"
+          right={hasGeneration ? <Link href="/generate" className="platform-text-link">Continue →</Link> : null}
+        />
         <main className="platform-page platform-page--brief">
           <header className="platform-brief-label-row">
             <span className="platform-kicker">New Brief</span>
@@ -1516,6 +1605,7 @@ export function BriefPage() {
             <button type="button" className="platform-text-link" onClick={openConversation}>
               or have a conversation →
             </button>
+            <Link href="/dashboard" className="platform-text-link">← Projects</Link>
           </section>
 
           {brief.chatExpanded ? (
@@ -1839,7 +1929,12 @@ export function GeneratePage() {
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
-        <PlatformNav current="generate" />
+        <FlowHeader
+          current="generate"
+          backHref="/brief"
+          backLabel="← Brief"
+          right={html && !loading ? <Link href="/edit" className="platform-primary-btn">Edit →</Link> : null}
+        />
         <main className={`platform-page platform-page--generate ${railCollapsed ? 'platform-page--rail-collapsed' : ''}`}>
           <aside className="platform-agent-panel">
             <span className="platform-kicker">Agent Panel</span>
@@ -1876,7 +1971,7 @@ export function GeneratePage() {
               </div>
             </div>
 
-            {!html && !loading && (
+            {!html && !loading && loaded && (
               <div className="platform-empty">
                 <h2>No active generation yet.</h2>
                 <p>Head back to the brief, fill in the direction, and hit Build It to start the agent pipeline.</p>
@@ -1922,7 +2017,14 @@ export function GeneratePage() {
                 )}
 
                 <div className="platform-review-actions">
-                  <Link href="/edit" className="platform-primary-btn">Looking good? Edit it →</Link>
+                  <Link href="/edit" className="platform-primary-btn">Edit this page →</Link>
+                  <button
+                    type="button"
+                    className="platform-secondary-btn"
+                    onClick={() => html && downloadHtml(html, resolveBrandName(brief, currentSnapshot))}
+                  >
+                    Download HTML
+                  </button>
                   <Link href="/brief" className="platform-text-link">Start over</Link>
                   {previousGeneration && (
                     <button type="button" className="platform-secondary-btn" onClick={() => setPreviewMode(prev => prev === 'current' ? 'before-after' : 'current')}>
@@ -2103,19 +2205,26 @@ export function EditorPage() {
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
   const [accentOverride, setAccentOverride] = useState('#C9A84C')
+  const [editorReady, setEditorReady] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const saved = readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null)
     setGeneration(saved)
-    if (!saved?.html) return
+    if (!saved?.html) {
+      setLoaded(true)
+      return
+    }
 
     const nextModel = buildEditableDocumentModel(saved.html)
     setEditorModel(nextModel)
     setTextValues(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text])))
     setImageValues(Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src])))
     setAccentOverride(saved.metadata?.palette?.accent || '#C9A84C')
+    setEditorReady(true)
+    setLoaded(true)
   }, [])
 
   useEffect(() => {
@@ -2144,6 +2253,20 @@ export function EditorPage() {
     if (!contentWindow) return
     contentWindow.postMessage({ source: 'irie-editor-parent', type: 'set-accent', value: accentOverride, base: baseAccent }, '*')
   }, [accentOverride, generation])
+
+  useEffect(() => {
+    if (!editorReady || !generation || !editorModel) return
+    const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
+    const nextHtml = buildEditedHtml(editorModel.annotatedHtml, textValues, imageValues, baseAccent, accentOverride)
+    const nextSnapshot: GenerationSnapshot = {
+      ...generation,
+      html: nextHtml,
+      metadata: generation.metadata
+        ? { ...generation.metadata, palette: { ...generation.metadata.palette, accent: accentOverride } }
+        : generation.metadata,
+    }
+    writeStorage(LAST_GENERATION_STORAGE_KEY, nextSnapshot)
+  }, [accentOverride, editorModel, editorReady, generation, imageValues, textValues])
 
   function focusTextItem(id: string) {
     setSelectedTextId(id)
@@ -2188,18 +2311,20 @@ export function EditorPage() {
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
-        <PlatformNav current="edit" />
-        <main className="platform-page platform-page--editor">
-          <header className="platform-editor-topbar">
-            <Link href="/generate" className="platform-text-link">← Generate</Link>
-            <div className="platform-editor-topbar-actions">
+        <FlowHeader
+          current="edit"
+          backHref="/generate"
+          backLabel="← Generate"
+          right={(
+            <div className="platform-flow-header-button-row">
               <button type="button" className="platform-secondary-btn" onClick={downloadEditedHtml} disabled={!editorModel}>
                 Download HTML
               </button>
               <Link href="/publish" className="platform-primary-btn">Publish →</Link>
             </div>
-          </header>
-
+          )}
+        />
+        <main className="platform-page platform-page--editor">
           {generation?.html && editorModel ? (
             <section className="platform-editor-layout">
               <aside className="platform-editor-sidebar">
@@ -2213,8 +2338,8 @@ export function EditorPage() {
                         className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
                         onClick={() => focusTextItem(item.id)}
                       >
-                        <strong>{item.label}</strong>
-                        <span>{(textValues[item.id] || item.text).slice(0, 96)}</span>
+                        <strong>{item.tagName.toUpperCase()} · {item.label}</strong>
+                        <span>{(textValues[item.id] || item.text).slice(0, 50)}</span>
                       </button>
                     ))}
                   </div>
@@ -2259,66 +2384,94 @@ export function EditorPage() {
                 />
               </div>
             </section>
-          ) : (
+          ) : loaded ? (
             <section className="platform-empty">
-              <h2>Edit mode coming soon. Your generated page is ready to customize.</h2>
-              <p>Generate a page first, then come back here to continue.</p>
+              <h2>Nothing to edit yet.</h2>
+              <p><Link href="/brief" className="platform-text-link">← Start a brief</Link></p>
             </section>
-          )}
+          ) : null}
         </main>
       </div>
     </BuilderErrorBoundary>
   )
 }
 
-export function PlaceholderPage({
-  mode,
-  title,
-  body,
-}: {
-  mode: 'publish'
-  title: string
-  body: string
-}) {
+export function PublishPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     setGeneration(readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null))
+    setLoaded(true)
   }, [])
+
+  const embedCode = '<iframe src="https://your-hosted-page.example/page.html" width="100%" height="100%"></iframe>'
+  const htmlSize = generation?.html ? new Blob([generation.html], { type: 'text/html' }).size : 0
+
+  async function copyEmbedCode() {
+    try {
+      await navigator.clipboard.writeText(embedCode)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {}
+  }
 
   return (
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
-        <PlatformNav current={mode} />
+        <FlowHeader current="publish" backHref="/edit" backLabel="← Edit" />
         <main className="platform-page platform-page--placeholder">
-          <section className="platform-hero-card">
-            <span className="platform-kicker">Publish</span>
-            <h1>{title}</h1>
-            <p>{body}</p>
-            <div className="platform-hero-actions">
-              <button
-                type="button"
-                className="platform-primary-btn"
-                onClick={() => generation?.html && downloadHtml(generation.html, generation.blueprint?.brandCore?.brandName || 'irie-page')}
-                disabled={!generation?.html}
-              >
-                Download HTML
-              </button>
-              <Link href="/generate" className="platform-text-link">← Back to Generate</Link>
-            </div>
-          </section>
-
           {generation?.html ? (
-            <section className="platform-section-card">
-              <PreviewFrame html={generation.html} title={`${mode} preview`} className="platform-preview-frame" />
-            </section>
-          ) : (
+            <>
+              <section className="platform-section-card">
+                <div className="platform-section-head">
+                  <span className="platform-kicker">Download</span>
+                  <h2>Take the HTML and host it anywhere.</h2>
+                </div>
+                <div className="platform-publish-actions">
+                  <button
+                    type="button"
+                    className="platform-primary-btn"
+                    onClick={() => generation?.html && downloadHtml(generation.html, generation.blueprint?.brandCore?.brandName || 'irie-page')}
+                  >
+                    Download HTML
+                  </button>
+                  <span className="platform-helper">File size: {formatFileSize(htmlSize)}</span>
+                </div>
+              </section>
+
+              <section className="platform-section-card">
+                <div className="platform-section-head">
+                  <span className="platform-kicker">Copy Embed</span>
+                  <h2>Drop it into any existing site.</h2>
+                </div>
+                <div className="platform-code-card">
+                  <code>{embedCode}</code>
+                </div>
+                <div className="platform-publish-actions">
+                  <button type="button" className="platform-secondary-btn" onClick={copyEmbedCode}>
+                    {copied ? 'Copied' : 'Copy Code'}
+                  </button>
+                  <span className="platform-helper">Host the HTML file first, then replace the src with your URL.</span>
+                </div>
+              </section>
+
+              <section className="platform-section-card platform-section-card--muted">
+                <div className="platform-section-head">
+                  <span className="platform-kicker">Share Preview</span>
+                  <h2>Coming soon</h2>
+                </div>
+                <p>Live URLs and custom domains are coming in the next release.</p>
+              </section>
+            </>
+          ) : loaded ? (
             <section className="platform-empty">
-              <h2>No generated page ready yet.</h2>
-              <p>Generate a page first, then come back here to continue.</p>
+              <h2>Nothing to publish yet.</h2>
+              <p><Link href="/brief" className="platform-text-link">← Start a brief</Link></p>
             </section>
-          )}
+          ) : null}
         </main>
       </div>
     </BuilderErrorBoundary>
@@ -3147,6 +3300,63 @@ const platformCss = `
     justify-content:flex-end;
   }
 
+  .platform-flow-header{
+    position:sticky;
+    top:0;
+    z-index:40;
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    gap:1rem;
+    align-items:center;
+    padding:1rem clamp(1rem, 3vw, 2.4rem);
+    border-bottom:1px solid rgba(201,168,76,0.08);
+    background:rgba(8,8,8,0.88);
+    backdrop-filter:blur(18px);
+  }
+
+  .platform-flow-header > .platform-text-link{
+    justify-self:start;
+  }
+
+  .platform-flow-header-actions{
+    display:flex;
+    justify-content:flex-end;
+    min-width:140px;
+  }
+
+  .platform-flow-header-button-row{
+    display:flex;
+    gap:0.75rem;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+
+  .platform-flow-indicator{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:0.55rem;
+    flex-wrap:wrap;
+  }
+
+  .platform-flow-step{
+    display:flex;
+    align-items:center;
+    gap:0.55rem;
+    color:var(--muted-2);
+    font-size:0.72rem;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+  }
+
+  .platform-flow-step.is-active{
+    color:var(--gold);
+  }
+
+  .platform-flow-separator{
+    color:rgba(201,168,76,0.3);
+  }
+
   .platform-primary-btn--nav{
     padding:0.78rem 1.1rem;
     font-size:0.68rem;
@@ -3243,6 +3453,20 @@ const platformCss = `
   .platform-recent-card span{
     color:var(--muted-2);
     font-size:0.84rem;
+  }
+
+  .platform-recent-label{
+    color:var(--gold) !important;
+    text-transform:uppercase;
+    letter-spacing:0.18em;
+    font-size:0.66rem !important;
+  }
+
+  .platform-recent-actions{
+    display:flex;
+    gap:0.9rem;
+    flex-wrap:wrap;
+    align-items:center;
   }
 
   .platform-brief-label-row{
@@ -3350,20 +3574,6 @@ const platformCss = `
     gap:1rem;
   }
 
-  .platform-editor-topbar{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:1rem;
-    padding:0.25rem 0;
-  }
-
-  .platform-editor-topbar-actions{
-    display:flex;
-    gap:0.8rem;
-    flex-wrap:wrap;
-  }
-
   .platform-editor-layout{
     display:grid;
     grid-template-columns:320px minmax(0, 1fr);
@@ -3451,6 +3661,31 @@ const platformCss = `
     display:none;
   }
 
+  .platform-publish-actions{
+    display:grid;
+    gap:0.7rem;
+    justify-items:start;
+  }
+
+  .platform-code-card{
+    padding:1rem;
+    border-radius:20px;
+    border:1px solid rgba(201,168,76,0.14);
+    background:rgba(255,255,255,0.02);
+    overflow:auto;
+  }
+
+  .platform-code-card code{
+    color:var(--cream);
+    font-size:0.92rem;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+
+  .platform-section-card--muted{
+    opacity:0.82;
+  }
+
   @media (max-width: 1200px){
     .platform-page--generate,
     .platform-page--generate.platform-page--rail-collapsed{
@@ -3504,12 +3739,28 @@ const platformCss = `
       flex-direction:column;
     }
 
+    .platform-flow-header{
+      grid-template-columns:1fr;
+      justify-items:start;
+    }
+
     .platform-nav-links{
       width:100%;
     }
 
     .platform-nav-right{
       width:100%;
+    }
+
+    .platform-flow-header-actions{
+      width:100%;
+      justify-content:flex-start;
+      min-width:0;
+    }
+
+    .platform-flow-header-button-row{
+      width:100%;
+      justify-content:flex-start;
     }
 
     .platform-nav-links a{
@@ -3535,11 +3786,6 @@ const platformCss = `
     }
 
     .platform-review-actions{
-      flex-direction:column;
-      align-items:stretch;
-    }
-
-    .platform-editor-topbar{
       flex-direction:column;
       align-items:stretch;
     }
