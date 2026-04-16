@@ -37,6 +37,47 @@ interface CreativeDecision {
   label: string
   value: string
   reason: string
+  agent?: string
+}
+
+type AgentName =
+  | 'creative-director'
+  | 'brand-voice'
+  | 'psychology-director'
+  | 'art-director'
+  | 'motion-director'
+  | 'mobile-director'
+  | 'assembler'
+  | 'critic'
+
+type AgentState = 'waiting' | 'working' | 'done' | 'failed'
+
+const AGENT_ROSTER: Array<{ name: AgentName; label: string; description: string }> = [
+  { name: 'creative-director', label: 'Creative Director', description: 'shaping the emotional target' },
+  { name: 'brand-voice', label: 'Brand Voice', description: 'writing your copy' },
+  { name: 'psychology-director', label: 'Psychology Director', description: 'sequencing emotion' },
+  { name: 'art-director', label: 'Art Director', description: 'choosing visual language' },
+  { name: 'motion-director', label: 'Motion Director', description: 'setting reveal behavior' },
+  { name: 'mobile-director', label: 'Mobile Director', description: 'optimizing for handheld' },
+  { name: 'assembler', label: 'Assembler', description: 'building your page' },
+  { name: 'critic', label: 'Critic', description: 'preparing review' },
+]
+
+type AgentStatusMap = Partial<Record<AgentName, AgentState>>
+
+function emptyAgentStatus(): AgentStatusMap {
+  const m: AgentStatusMap = {}
+  for (const a of AGENT_ROSTER) m[a.name] = 'waiting'
+  return m
+}
+
+function stateLabel(state: AgentState): string {
+  switch (state) {
+    case 'waiting': return 'waiting'
+    case 'working': return 'working'
+    case 'done': return 'done'
+    case 'failed': return 'fallback'
+  }
 }
 
 interface EmotionalControls {
@@ -442,6 +483,9 @@ export default function DashboardPage() {
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0)
   const [errorLog, setErrorLog] = useState<{ time: string; message: string }[]>([])
 
+  /* agent status (streamed from /api/generate in real time) */
+  const [agentStatus, setAgentStatus] = useState<AgentStatusMap>(emptyAgentStatus)
+
   /* mobile panel */
   const [mobilePanel, setMobilePanel] = useState<'form' | 'preview' | 'log'>('form')
 
@@ -563,8 +607,14 @@ export default function DashboardPage() {
     setCritique(null)
     setDecisions([])
     setVisibleDecisions(0)
+    setAgentStatus(emptyAgentStatus())
 
-    const payload: GeneratePayload = {
+    const requestId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? crypto.randomUUID()
+      : `req-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+    const payload: GeneratePayload & { requestId: string } = {
+      requestId,
       brandName: brandName.trim(),
       headline: headline.trim(),
       heroImageUrl: isUrl ? heroRaw.trim() : '',
@@ -593,17 +643,58 @@ export default function DashboardPage() {
         body: JSON.stringify(payload),
       })
 
-      let data: Record<string, unknown>
-      const text = await res.text()
-      try {
-        data = JSON.parse(text)
-      } catch {
-        const preview = text.slice(0, 120).replace(/<[^>]*>/g, '').trim()
-        throw new Error(`Server returned non-JSON (HTTP ${res.status}): ${preview || 'empty response'}`)
+      if (!res.ok || !res.body) {
+        const fallbackText = await res.text().catch(() => '')
+        let msg = `Generation failed (HTTP ${res.status})`
+        try {
+          const j = JSON.parse(fallbackText)
+          if (j && j.message) msg = j.message
+        } catch {}
+        throw new Error(msg)
       }
 
-      if (!res.ok || data.error) {
-        throw new Error((data.message as string) || (data.error as string) || `Generation failed (HTTP ${res.status})`)
+      let data: Record<string, unknown> | null = null
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          let event: Record<string, unknown>
+          try {
+            event = JSON.parse(trimmed)
+          } catch {
+            continue
+          }
+          if (event.type === 'status' && typeof event.agent === 'string' && typeof event.state === 'string') {
+            const agent = event.agent as AgentName
+            const state = event.state as AgentState
+            setAgentStatus(prev => ({ ...prev, [agent]: state }))
+          } else if (event.type === 'complete' && event.payload) {
+            data = event.payload as Record<string, unknown>
+          } else if (event.type === 'error' && typeof event.message === 'string') {
+            throw new Error(event.message as string)
+          }
+        }
+      }
+
+      if (buffer.trim()) {
+        try {
+          const tail = JSON.parse(buffer.trim())
+          if (tail && tail.type === 'complete' && tail.payload) data = tail.payload
+        } catch {}
+      }
+
+      if (!data) {
+        throw new Error('Stream ended without a complete payload.')
       }
 
       setHtml(data.html as string)
@@ -1209,8 +1300,25 @@ export default function DashboardPage() {
 
           {loading && (
             <div className="db-loading">
-              <div className="db-loading-pulse" />
-              <p className="db-loading-msg">{LOADING_MESSAGES[loadingMsgIdx]}</p>
+              <div className="db-agent-panel" role="status" aria-live="polite">
+                <p className="db-agent-panel-kicker">Creative team at work</p>
+                <p className="db-agent-panel-title">{LOADING_MESSAGES[loadingMsgIdx]}</p>
+                <ul className="db-agent-list">
+                  {AGENT_ROSTER.map(agent => {
+                    const state = agentStatus[agent.name] || 'waiting'
+                    return (
+                      <li key={agent.name} className={`db-agent-row db-agent-row--${state}`}>
+                        <span className={`db-agent-dot db-agent-dot--${state}`} aria-hidden="true">
+                          {state === 'done' ? '\u2713' : state === 'failed' ? '\u2715' : ''}
+                        </span>
+                        <span className="db-agent-label">{agent.label}</span>
+                        <span className="db-agent-desc">{agent.description}</span>
+                        <span className={`db-agent-state db-agent-state--${state}`}>{stateLabel(state)}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             </div>
           )}
 
@@ -1529,9 +1637,12 @@ export default function DashboardPage() {
             <div key={i} className={`db-log-item db-log-item--stagger ${i < visibleDecisions ? 'db-log-item--visible' : ''}`}
               style={{ transitionDelay: `${i * 400}ms` }}>
               <span className="db-log-icon">{'\u2726'}</span>
-              <div>
+              <div className="db-log-body">
                 <span className="db-log-label">{d.label}</span>
                 <span className="db-log-value">{d.value}</span>
+                {d.agent && (
+                  <span className="db-log-agent">{'\u21b3 '}{d.agent}</span>
+                )}
                 {d.reason && <span className="db-log-reason">{d.reason}</span>}
               </div>
             </div>
@@ -1712,11 +1823,36 @@ const dashboardCSS = `
   .db-placeholder-title{font-family:'Playfair Display',Georgia,serif;font-size:clamp(26px,3.5vw,44px);font-style:italic;color:var(--text);line-height:1.15}
   .db-placeholder-sub{font-size:13px;color:var(--gold);letter-spacing:0.04em;margin-top:12px;max-width:380px;line-height:1.5;opacity:0.7}
 
-  .db-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px}
+  .db-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px}
   .db-loading-pulse{width:48px;height:48px;border-radius:50%;background:var(--gold);animation:pulse 1.8s ease-in-out infinite}
   @keyframes pulse{0%,100%{transform:scale(1);opacity:0.6}50%{transform:scale(1.2);opacity:1}}
   .db-loading-msg{font-size:14px;color:var(--gold);letter-spacing:0.04em;animation:fadeCycle 2.5s ease-in-out infinite}
   @keyframes fadeCycle{0%,100%{opacity:0.5}50%{opacity:1}}
+
+  /* ── AGENT STATUS PANEL ── */
+  .db-agent-panel{width:100%;max-width:560px;padding:24px 28px;border:1px solid var(--border);border-radius:16px;background:
+    radial-gradient(circle at top right, rgba(201,168,76,0.10), transparent 60%),
+    linear-gradient(180deg, rgba(201,168,76,0.04), rgba(0,0,0,0.18))}
+  .db-agent-panel-kicker{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px}
+  .db-agent-panel-title{font-family:'Playfair Display',Georgia,serif;font-size:22px;line-height:1.15;color:var(--text);margin-bottom:18px;min-height:28px}
+  .db-agent-list{list-style:none;display:flex;flex-direction:column;gap:10px;padding:0;margin:0}
+  .db-agent-row{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid transparent;border-radius:10px;background:rgba(0,0,0,0.16);transition:border-color .25s,background .25s,opacity .25s;opacity:.7}
+  .db-agent-row--waiting{opacity:.55}
+  .db-agent-row--working{border-color:rgba(201,168,76,0.35);background:rgba(201,168,76,0.06);opacity:1}
+  .db-agent-row--done{opacity:1}
+  .db-agent-row--failed{border-color:rgba(220,80,80,0.35);opacity:1}
+  .db-agent-dot{width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;color:#0A0A0A;font-weight:700}
+  .db-agent-dot--waiting{background:rgba(242,237,228,0.25)}
+  .db-agent-dot--working{background:var(--gold);animation:agentPulse 1.2s ease-in-out infinite}
+  .db-agent-dot--done{background:#6EE7A6}
+  .db-agent-dot--failed{background:#E66A6A}
+  @keyframes agentPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,0.5)}50%{box-shadow:0 0 0 6px rgba(201,168,76,0)}}
+  .db-agent-label{font-size:13px;font-weight:600;color:var(--text);letter-spacing:0.01em}
+  .db-agent-desc{font-size:11px;color:rgba(242,237,228,0.55);grid-column:2;margin-top:2px}
+  .db-agent-state{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-variant-numeric:tabular-nums;grid-column:3;grid-row:1 / span 2;align-self:center}
+  .db-agent-state--working{color:var(--gold)}
+  .db-agent-state--done{color:#6EE7A6}
+  .db-agent-state--failed{color:#E66A6A}
 
   .db-preview-actions{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;flex-wrap:wrap}
   .db-action-btn{padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;transition:border-color 0.2s,color 0.2s;min-height:44px}
@@ -1782,6 +1918,8 @@ const dashboardCSS = `
   .db-log-icon{color:var(--gold);font-size:14px;flex-shrink:0;margin-top:2px}
   .db-log-label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:2px;font-weight:500}
   .db-log-value{display:block;font-size:13px;color:var(--text);line-height:1.5}
+  .db-log-agent{display:inline-block;margin-top:4px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);padding:2px 6px;border:1px solid var(--border);border-radius:100px;background:rgba(201,168,76,0.06)}
+  .db-log-body .db-log-reason{margin-top:6px}
   .db-log-reason{display:block;font-size:11px;color:var(--muted);line-height:1.4;font-style:italic;margin-top:3px}
 
   /* placeholder decisions */
