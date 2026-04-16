@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AuthShell } from '@/app/_auth/AuthShell'
 import { createClient } from '@/lib/supabase/client'
+
+type BootstrapStatus = 'checking' | 'ready' | 'invalid'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -12,6 +14,66 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<BootstrapStatus>('checking')
+
+  // On mount: establish a recovery session from whichever format Supabase used
+  // in the email link. Three possibilities:
+  //  1. PKCE:     ?code=...           → exchangeCodeForSession
+  //  2. Implicit: #access_token=...   → setSession from hash params
+  //  3. Session already present       → proceed directly
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function bootstrap() {
+      // 1. PKCE code exchange
+      const search = new URLSearchParams(window.location.search)
+      const code = search.get('code')
+      if (code) {
+        const { error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code)
+        if (exchangeError) {
+          setStatus('invalid')
+          return
+        }
+        window.history.replaceState(null, '', '/auth/reset-password')
+        setStatus('ready')
+        return
+      }
+
+      // 2. Implicit-flow hash fragment
+      if (window.location.hash && window.location.hash.length > 1) {
+        const hash = new URLSearchParams(window.location.hash.slice(1))
+        const access_token = hash.get('access_token')
+        const refresh_token = hash.get('refresh_token')
+        const hashError = hash.get('error_description') || hash.get('error')
+        if (hashError) {
+          setStatus('invalid')
+          return
+        }
+        if (access_token && refresh_token) {
+          const { error: setError } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          })
+          if (setError) {
+            setStatus('invalid')
+            return
+          }
+          window.history.replaceState(null, '', '/auth/reset-password')
+          setStatus('ready')
+          return
+        }
+      }
+
+      // 3. Already have a user (rare — e.g. returning after a partial flow)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setStatus(user ? 'ready' : 'invalid')
+    }
+
+    bootstrap().catch(() => setStatus('invalid'))
+  }, [])
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -33,6 +95,32 @@ export default function ResetPasswordPage() {
       return
     }
     router.push('/login?reset=1')
+  }
+
+  if (status === 'checking') {
+    return (
+      <AuthShell title="One moment." subtitle="Confirming your reset link…">
+        <div style={{ minHeight: '2rem' }} />
+      </AuthShell>
+    )
+  }
+
+  if (status === 'invalid') {
+    return (
+      <AuthShell
+        title="This link expired."
+        subtitle="Reset links are good for a short window."
+      >
+        <div className="auth-links">
+          <Link href="/auth/forgot-password" className="auth-link">
+            Send a new reset link
+          </Link>
+          <Link href="/login" className="auth-link">
+            Back to sign in
+          </Link>
+        </div>
+      </AuthShell>
+    )
   }
 
   return (
