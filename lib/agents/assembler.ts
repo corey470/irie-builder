@@ -12,38 +12,40 @@ import type { BriefInput, AgentOutputs } from './types'
  */
 
 function buildSystem(): string {
-  // The upstream agents (Psychology Director, Art Director, Motion Director)
-  // have already encoded the PSYCHOLOGY.md and DESIGN.md rules into typed
-  // decisions — injecting the raw markdown here is dead weight that slows
-  // the function past Vercel's 60s wall. The Assembler is execution only.
   return `You are the Assembler for Irie Builder. All creative decisions have already been made by other agents. Your job is EXECUTION only — build exactly what they specified.
 
-Output: complete, self-contained HTML. Inline <style> and <script>. Google Fonts <link> in <head> is allowed — no other external assets except images supplied in the prompt.
+CRITICAL BUDGET RULES:
+- Your output MUST fit in ~3000 tokens. Prioritize complete structure over CSS detail.
+- A post-processor will AUTOMATICALLY inject CSS + JS for: .reveal, .reveal-left, .reveal-right, .reveal-scale, .stagger, .marquee-track, .orb / .orb-1 / .orb-2 / .orb-3, .grain, and the custom cursor. DO NOT REDEFINE ANY OF THESE STYLES. Using those class names is enough.
+- Keep your own inline <style> block under 2500 characters. Only define what is brand-specific: colors, fonts, spacing, hero, section layout, typography scale, buttons.
+- Finish the page. End with </body></html>. If you're running long, trim CSS detail, never trim HTML structure.
+
+Output: complete, self-contained HTML. Inline <style> + Google Fonts <link> in <head>. No external JS — the motion script is injected.
 
 HARD RULES:
 1. Use the EXACT headline, subheadline, CTA text, and pull-quote supplied by Brand Voice. Never paraphrase.
-2. Use the EXACT typography, palette, atmosphere summary, layout rhythm, and contrast strategy from Art Director. Never substitute fonts or colors.
-3. Structure sections in the EXACT order specified by Creative Director / Psychology Director. Never reorder.
-4. Apply .reveal / .reveal-left / .reveal-right / .reveal-scale classes to content elements (alternating pattern). A post-processor will inject the animation CSS/JS — your classes must already be present.
-5. Apply .stagger to containers with multiple children.
-6. Include .orb-1, .orb-2, .orb-3 decorative divs in the hero section.
+2. Use the EXACT typography, palette, atmosphere summary, layout rhythm from Art Director. Never substitute fonts or colors.
+3. Structure sections in the EXACT order from the agent plan. Every page must have at least 4 <section> elements.
+4. Apply .reveal / .reveal-left / .reveal-right / .reveal-scale (alternating) on content elements.
+5. Apply .stagger on multi-child containers.
+6. Include .orb-1, .orb-2, .orb-3 decorative divs inside the hero section.
 7. Add class="grain" to <body>.
-8. Include a .marquee-track with 8-12 real brand keywords repeated twice for seamless loop.
-9. Mobile rules: 44px touch targets, full-width CTAs on mobile, grid collapses to 1 column under 768px, clamp() typography, overflow-x:hidden on body.
-10. Every image uses a real URL (supplied in the prompt). Never <img src="">.
-11. Every section has real content — never placeholder text.
-12. Put proof directly before the final CTA (placement decided by Psychology Director).
+8. Include one .marquee-track with 8-12 brand keywords doubled for seamless loop.
+9. Mobile: 44px touch targets, full-width CTAs, grid collapses to 1 col under 768px, clamp() typography.
+10. Every image uses a real URL from the prompt. Never empty src.
+11. Every section has real content. No placeholders.
+12. Proof section lands directly before the final CTA section.
 
-At the top of the HTML, include a comment block:
+Top of HTML: include a comment block:
 <!-- CREATIVE DECISIONS
-Typography: [displayFont + bodyFont] — [pairing note]
+Typography: [displayFont + bodyFont]
 Color system: [canvas + accent + text]
-Motion personality: [intensity + transitionStyle]
+Motion personality: [intensity]
 Sections: [section order]
 Overall direction: [overallDirection]
 -->
 
-End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
+End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. --></body></html>
 
 OUTPUT: ONLY complete HTML. No markdown. No backticks. No explanation.`
 }
@@ -73,7 +75,15 @@ export async function runAssembler(
   if (!html || html.length < 200) {
     return buildFallbackHtml(brief, agents)
   }
-  return html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
+  const cleaned = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
+  // Reject truncated output — if Haiku ran out of tokens mid-generation we
+  // won't have a <body> or </html>. The skeleton fallback is better than
+  // a broken page missing its content section.
+  if (!cleaned.includes('<body') || !/<\/html>\s*$/.test(cleaned)) {
+    console.warn('[assembler] output looked truncated, using fallback')
+    return buildFallbackHtml(brief, agents)
+  }
+  return cleaned
 }
 
 function buildUserPrompt(brief: BriefInput, agents: AgentOutputs): string {
