@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react'
 import { PRESET_PLACEHOLDERS } from '@/lib/constants/presetPlaceholders'
 
 type MoodOption = 'light' | 'dark' | 'warm'
@@ -142,6 +142,14 @@ interface GenerationHistoryEntry {
   verdict: string
 }
 
+interface CloneAnalysis {
+  sections: string[]
+  style: string
+  pacing: string
+  colorMood: string
+  typographyStyle: string
+}
+
 interface ChatMessage {
   role: 'ai' | 'user'
   text: string
@@ -168,6 +176,8 @@ interface BriefState {
   primary: string
   accent: string
   background: string
+  cloneUrl: string
+  cloneAnalysis: CloneAnalysis | null
 }
 
 interface PendingGenerationRequest {
@@ -420,6 +430,8 @@ function defaultBriefState(): BriefState {
     primary: '#111111',
     accent: '#C9A84C',
     background: '#F5F0E8',
+    cloneUrl: '',
+    cloneAnalysis: null,
   }
 }
 
@@ -552,9 +564,28 @@ function resolveBrandName(brief: BriefState, generation: GenerationSnapshot | nu
   )
 }
 
+function summarizeCloneAnalysis(cloneAnalysis: CloneAnalysis) {
+  return `Found: ${cloneAnalysis.sections.length} sections — ${cloneAnalysis.sections.join(', ')}. Style: ${cloneAnalysis.style}, ${cloneAnalysis.colorMood}, ${cloneAnalysis.typographyStyle}. Pacing: ${cloneAnalysis.pacing}.`
+}
+
+function buildCloneContext(brief: BriefState) {
+  if (!brief.cloneAnalysis) return ''
+  const summary = summarizeCloneAnalysis(brief.cloneAnalysis)
+  const source = brief.cloneUrl.trim() ? `Reference URL: ${brief.cloneUrl.trim()}.` : ''
+  return [source, 'Use this as structural and tonal guidance for the page, but express it with my brand.', summary]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+}
+
+function buildRawBriefInput(brief: BriefState) {
+  const parts = [brief.briefInput.trim(), buildCloneContext(brief)].filter(Boolean)
+  return parts.join('\n\n').slice(0, 1900)
+}
+
 function hasBriefContent(brief: BriefState): boolean {
   return Boolean(
-    brief.briefInput.trim() ||
+    buildRawBriefInput(brief) ||
     brief.answers.some(answer => answer.trim()) ||
     brief.vibeText.trim() ||
     brief.styleBlend.trim()
@@ -588,6 +619,213 @@ function summarizeChange(previous: GenerationSnapshot | null, current: Generatio
     improvements,
     shifts: shifts.slice(0, 3),
   }
+}
+
+interface EditableTextItem {
+  id: string
+  label: string
+  text: string
+}
+
+interface EditableImageItem {
+  id: string
+  label: string
+  src: string
+}
+
+interface EditableDocumentModel {
+  annotatedHtml: string
+  frameHtml: string
+  textItems: EditableTextItem[]
+  imageItems: EditableImageItem[]
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function replaceColorTokens(input: string, fromColor: string, toColor: string) {
+  if (!fromColor || !toColor || fromColor.toLowerCase() === toColor.toLowerCase()) return input
+  return input.replace(new RegExp(escapeRegExp(fromColor), 'gi'), toColor)
+}
+
+function labelTextElement(tagName: string, index: number, text: string) {
+  if (tagName === 'h1') return 'Headline'
+  if (tagName === 'p' && index === 0) return 'Subheadline'
+  if (tagName === 'button' || (tagName === 'a' && text.length <= 32)) return `CTA ${index + 1}`
+  if (tagName === 'h2' || tagName === 'h3') return `Section Heading ${index + 1}`
+  return `Body Copy ${index + 1}`
+}
+
+function buildEditableDocumentModel(html: string): EditableDocumentModel {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+  const textItems: EditableTextItem[] = []
+  const imageItems: EditableImageItem[] = []
+
+  Array.from(doc.querySelectorAll('h1, h2, h3, p, button, a')).forEach((element, index) => {
+    const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
+    if (!text) return
+    const id = `text-${index + 1}`
+    element.setAttribute('data-irie-edit-id', id)
+    element.setAttribute('data-irie-editable', 'text')
+    textItems.push({ id, label: labelTextElement(element.tagName.toLowerCase(), index, text), text })
+  })
+
+  Array.from(doc.querySelectorAll('img')).forEach((element, index) => {
+    const id = `image-${index + 1}`
+    element.setAttribute('data-irie-image-id', id)
+    imageItems.push({
+      id,
+      label: `Image ${index + 1}`,
+      src: element.getAttribute('src') || '',
+    })
+  })
+
+  const annotatedHtml = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
+
+  const style = doc.createElement('style')
+  style.id = 'irie-editor-style'
+  style.textContent = `
+    [data-irie-editable="text"], [data-irie-image-id] { cursor: pointer; }
+    .is-irie-editor-selected { outline: 2px solid #C9A84C !important; outline-offset: 6px !important; }
+  `
+  doc.head.appendChild(style)
+
+  const script = doc.createElement('script')
+  script.id = 'irie-editor-script'
+  script.textContent = `
+    (() => {
+      const CHILD = 'irie-editor';
+      const PARENT = 'irie-editor-parent';
+      const selectedClass = 'is-irie-editor-selected';
+      const root = document.documentElement;
+
+      const findText = target => target instanceof Element ? target.closest('[data-irie-editable="text"]') : null;
+      const findImage = target => target instanceof Element ? target.closest('[data-irie-image-id]') : null;
+      const send = (type, payload = {}) => parent.postMessage({ source: CHILD, type, ...payload }, '*');
+      const clearSelection = () => document.querySelectorAll('.' + selectedClass).forEach(node => node.classList.remove(selectedClass));
+      const selectNode = node => {
+        clearSelection();
+        if (!node) return;
+        node.classList.add(selectedClass);
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      };
+      const swapColor = (value, fromColor, toColor) => {
+        if (!value) return value;
+        return value.split(fromColor).join(toColor).split(fromColor.toLowerCase()).join(toColor);
+      };
+      const replaceAccent = (fromColor, toColor) => {
+        if (!fromColor || !toColor || fromColor.toLowerCase() === toColor.toLowerCase()) return;
+        document.querySelectorAll('style').forEach(node => {
+          if (!node.textContent) return;
+          node.textContent = swapColor(node.textContent, fromColor, toColor);
+        });
+        document.querySelectorAll('[style]').forEach(node => {
+          const value = node.getAttribute('style');
+          if (!value) return;
+          node.setAttribute('style', swapColor(value, fromColor, toColor));
+        });
+        root.setAttribute('data-irie-current-accent', toColor);
+      };
+
+      document.addEventListener('click', event => {
+        const textNode = findText(event.target);
+        if (textNode) {
+          event.preventDefault();
+          selectNode(textNode);
+          textNode.setAttribute('contenteditable', 'true');
+          textNode.focus();
+          send('select-text', { id: textNode.getAttribute('data-irie-edit-id') });
+          return;
+        }
+
+        const imageNode = findImage(event.target);
+        if (imageNode) {
+          event.preventDefault();
+          selectNode(imageNode);
+          send('select-image', { id: imageNode.getAttribute('data-irie-image-id') });
+        }
+      });
+
+      document.addEventListener('input', event => {
+        const textNode = findText(event.target);
+        if (!textNode) return;
+        send('text-change', {
+          id: textNode.getAttribute('data-irie-edit-id'),
+          text: textNode.textContent || '',
+        });
+      });
+
+      window.addEventListener('message', event => {
+        const data = event.data;
+        if (!data || data.source !== PARENT) return;
+
+        if (data.type === 'focus-text') {
+          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
+          if (node instanceof HTMLElement) {
+            selectNode(node);
+            node.setAttribute('contenteditable', 'true');
+            node.focus();
+          }
+        }
+
+        if (data.type === 'focus-image') {
+          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
+          if (node instanceof HTMLElement) selectNode(node);
+        }
+
+        if (data.type === 'replace-image') {
+          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
+          if (node instanceof HTMLImageElement) node.src = data.src || node.src;
+        }
+
+        if (data.type === 'set-accent') {
+          const previous = root.getAttribute('data-irie-current-accent') || data.base || '';
+          replaceAccent(previous, data.value || previous);
+        }
+      });
+    })();
+  `
+  doc.body.appendChild(script)
+
+  return {
+    annotatedHtml,
+    frameHtml: `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`,
+    textItems,
+    imageItems,
+  }
+}
+
+function buildEditedHtml(
+  annotatedHtml: string,
+  textValues: Record<string, string>,
+  imageValues: Record<string, string>,
+  sourceAccent: string,
+  accentOverride: string,
+) {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(annotatedHtml, 'text/html')
+
+  Object.entries(textValues).forEach(([id, value]) => {
+    const node = doc.querySelector(`[data-irie-edit-id="${id}"]`)
+    if (node) node.textContent = value
+  })
+
+  Object.entries(imageValues).forEach(([id, value]) => {
+    const node = doc.querySelector(`[data-irie-image-id="${id}"]`)
+    if (node instanceof HTMLImageElement && value) node.src = value
+  })
+
+  doc.querySelectorAll('[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [contenteditable]').forEach(node => {
+    node.removeAttribute('data-irie-edit-id')
+    node.removeAttribute('data-irie-editable')
+    node.removeAttribute('data-irie-image-id')
+    node.removeAttribute('contenteditable')
+  })
+
+  let html = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
+  return replaceColorTokens(html, sourceAccent, accentOverride)
 }
 
 function PreviewFrame({
@@ -677,19 +915,28 @@ function useGenerationPresence() {
   return hasGeneration
 }
 
-function PlatformNav({ current }: { current: 'dashboard' | 'brief' | 'generate' | 'edit' | 'publish' }) {
+function PlatformNav({
+  current,
+  action,
+}: {
+  current: 'dashboard' | 'brief' | 'generate' | 'edit' | 'publish'
+  action?: ReactNode
+}) {
   const hasGeneration = useGenerationPresence()
 
   return (
     <header className="platform-nav">
       <Link href="/" className="platform-wordmark">IrieBuilder</Link>
-      <nav className="platform-nav-links" aria-label="Platform">
-        <Link href="/dashboard" className={current === 'dashboard' ? 'is-active' : ''}>Projects</Link>
-        <Link href="/brief" className={current === 'brief' ? 'is-active' : ''}>Brief</Link>
-        {hasGeneration && (
-          <Link href="/generate" className={current === 'generate' ? 'is-active' : ''}>Generate</Link>
-        )}
-      </nav>
+      <div className="platform-nav-right">
+        <nav className="platform-nav-links" aria-label="Platform">
+          <Link href="/dashboard" className={current === 'dashboard' ? 'is-active' : ''}>Projects</Link>
+          <Link href="/brief" className={current === 'brief' ? 'is-active' : ''}>Brief</Link>
+          {hasGeneration && (
+            <Link href="/generate" className={current === 'generate' ? 'is-active' : ''}>Generate</Link>
+          )}
+        </nav>
+        {action ? <div className="platform-nav-action">{action}</div> : null}
+      </div>
     </header>
   )
 }
@@ -741,6 +988,28 @@ function AgentStatusRow({
   )
 }
 
+function AccordionCard({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <section className={`platform-accordion ${open ? 'is-open' : ''}`}>
+      <button type="button" className="platform-accordion-toggle" onClick={onToggle} aria-expanded={open}>
+        <span>{title}</span>
+        <span className="platform-accordion-caret">{open ? '▴' : '▾'}</span>
+      </button>
+      {open ? <div className="platform-accordion-body">{children}</div> : null}
+    </section>
+  )
+}
+
 export function ProjectsHomePage() {
   const [lastGeneration, setLastGeneration] = useState<GenerationSnapshot | null>(null)
 
@@ -752,32 +1021,39 @@ export function ProjectsHomePage() {
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
-        <PlatformNav current="dashboard" />
+        <PlatformNav
+          current="dashboard"
+          action={<Link href="/brief" className="platform-primary-btn platform-primary-btn--nav">New Project +</Link>}
+        />
         <main className="platform-page platform-page--dashboard">
-          <section className="platform-hero-card">
-            <span className="platform-kicker">Projects Home</span>
-            <h1>One project at a time. One clear next move.</h1>
-            <p>
-              The generation engine stays the same. This space is just your clean landing point before you write the brief and send the agents to work.
-            </p>
-            <div className="platform-hero-actions">
-              <Link href="/brief" className="platform-primary-btn">Start a new project →</Link>
-            </div>
+          <section className="platform-project-grid">
+            <Link href="/brief" className="platform-project-card platform-project-card--new">
+              <span className="platform-project-plus">+</span>
+              <strong>New project</strong>
+              <span>Open a fresh brief and send the engine to work.</span>
+            </Link>
           </section>
 
-          <section className="platform-section-card">
+          <section className="platform-section-card platform-section-card--recent">
             <div className="platform-section-head">
               <span className="platform-kicker">Recent</span>
               <h2>Last generated page</h2>
             </div>
             {lastGeneration ? (
-              <div className="platform-recent-card">
-                <div>
+              <div className="platform-recent-layout">
+                <div className="platform-recent-thumb">
+                  <PreviewFrame
+                    html={lastGeneration.html}
+                    title="Recent preview"
+                    className="platform-preview-frame platform-preview-frame--thumb"
+                  />
+                </div>
+                <div className="platform-recent-card">
                   <strong>{lastGeneration.blueprint?.brandCore?.brandName || 'Last Generation'}</strong>
                   <p>{lastGeneration.critique?.verdict || 'Your latest pass is ready to reopen.'}</p>
                   <span>{new Date(lastGeneration.createdAt).toLocaleString()}</span>
+                  <Link href="/generate" className="platform-secondary-btn">Continue →</Link>
                 </div>
-                <Link href="/generate" className="platform-secondary-btn">Open generation</Link>
               </div>
             ) : (
               <div className="platform-empty">
@@ -797,6 +1073,14 @@ export function BriefPage() {
   const [brief, setBrief] = useState<BriefState>(defaultBriefState())
   const [loaded, setLoaded] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [cloneLoading, setCloneLoading] = useState(false)
+  const [cloneError, setCloneError] = useState<string | null>(null)
+  const [openSections, setOpenSections] = useState({
+    design: false,
+    settings: false,
+    direction: false,
+    colors: false,
+  })
   const conversationRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -818,6 +1102,10 @@ export function BriefPage() {
 
   function updateBrief<K extends keyof BriefState>(key: K, value: BriefState[K]) {
     setBrief(prev => ({ ...prev, [key]: value }))
+  }
+
+  function toggleSection(key: keyof typeof openSections) {
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
   function toggleReference(style: ReferenceStyleOption) {
@@ -915,14 +1203,12 @@ export function BriefPage() {
       currentStep: CHAT_QUESTIONS.length,
       presetLabel: preset.label,
       inputValue: '',
+      cloneAnalysis: prev.cloneAnalysis,
+      cloneUrl: prev.cloneUrl,
     }))
-
-    window.setTimeout(() => {
-      conversationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 100)
   }
 
-  function startBuild() {
+  function queueBuild() {
     if (!hasBriefContent(brief)) return
     const request: PendingGenerationRequest = {
       id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pending-${Date.now()}`,
@@ -934,6 +1220,51 @@ export function BriefPage() {
     router.push('/generate')
   }
 
+  async function analyzeCloneUrl() {
+    const url = brief.cloneUrl.trim()
+    if (!url) {
+      setCloneError('Paste a URL first.')
+      return
+    }
+
+    setCloneLoading(true)
+    setCloneError(null)
+    try {
+      const response = await fetch('/api/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const result: unknown = await response.json()
+      if (!response.ok) {
+        const message = isObject(result) && typeof result.message === 'string' ? result.message : 'Analysis failed.'
+        throw new Error(message)
+      }
+      if (
+        !isObject(result) ||
+        !Array.isArray(result.sections) ||
+        typeof result.style !== 'string' ||
+        typeof result.pacing !== 'string' ||
+        typeof result.colorMood !== 'string' ||
+        typeof result.typographyStyle !== 'string'
+      ) {
+        throw new Error('Analysis returned an unexpected shape.')
+      }
+      updateBrief('cloneAnalysis', {
+        sections: result.sections.filter(section => typeof section === 'string') as string[],
+        style: result.style,
+        pacing: result.pacing,
+        colorMood: result.colorMood,
+        typographyStyle: result.typographyStyle,
+      })
+    } catch (error) {
+      setCloneError(error instanceof Error ? error.message : 'Analysis failed.')
+      updateBrief('cloneAnalysis', null)
+    } finally {
+      setCloneLoading(false)
+    }
+  }
+
   const canBuild = hasBriefContent(brief)
 
   return (
@@ -942,16 +1273,14 @@ export function BriefPage() {
       <div className="platform-shell">
         <PlatformNav current="brief" />
         <main className="platform-page platform-page--brief">
-          <section className="platform-brief-hero">
-            <span className="platform-kicker">Creative Brief</span>
-            <h1>Shape the page before the engine touches a pixel.</h1>
-            <p>Every control here feeds the same generation engine. This page just gives the brief room to breathe.</p>
-          </section>
+          <header className="platform-brief-label-row">
+            <span className="platform-kicker">New Brief</span>
+          </header>
 
-          <section className="platform-section-card">
+          <section className="platform-section-card platform-section-card--presets">
             <div className="platform-section-head">
               <span className="platform-kicker">Presets</span>
-              <h2>Start from a direction</h2>
+              <h2>Quick starts</h2>
             </div>
             <div className="platform-chip-grid">
               {PRESETS.map(preset => (
@@ -967,90 +1296,79 @@ export function BriefPage() {
             </div>
           </section>
 
-          <section className="platform-section-card">
+          <section className="platform-section-card platform-section-card--vision">
             <div className="platform-section-head">
-              <span className="platform-kicker">Vision</span>
-              <h2>Describe your vision</h2>
+              <span className="platform-kicker">Your Vision</span>
+              <h2>Words + pressure</h2>
             </div>
             <textarea
               className="platform-textarea platform-textarea--hero"
-              rows={4}
+              rows={5}
               value={brief.briefInput}
               onChange={event => updateBrief('briefInput', event.target.value)}
-              placeholder="Describe the feeling, the offer, the world, and the kind of page you want Irie Builder to create."
+              placeholder="Describe the feeling, the brand, the world you want to build."
             />
-          </section>
-
-          <section ref={conversationRef} className="platform-section-card">
-            <div className="platform-section-head">
-              <span className="platform-kicker">Conversation</span>
-              <h2>Or have a conversation</h2>
-            </div>
-            {!brief.chatExpanded ? (
-              <button type="button" className="platform-secondary-btn" onClick={openConversation}>
-                Open the guided conversation →
-              </button>
-            ) : (
-              <div className="platform-chat">
-                <div className="platform-chat-messages">
-                  {brief.messages.map((message, index) => (
-                    <div key={`${message.role}-${index}`} className={`platform-chat-bubble platform-chat-bubble--${message.role}`}>
-                      {message.text}
-                    </div>
-                  ))}
-                  {isTyping && <div className="platform-chat-typing">•••</div>}
-                </div>
-                <div className="platform-chat-input-row">
+            <div className="platform-slider-grid platform-slider-grid--compact">
+              {EMOTIONAL_SLIDERS.map(slider => (
+                <label key={slider.key} className="platform-slider platform-slider--compact">
+                  <div className="platform-slider-head">
+                    <span>{slider.label}</span>
+                    <strong>{brief.emotionalControls[slider.key]}</strong>
+                  </div>
                   <input
-                    data-brief-chat-input="true"
-                    type="text"
-                    className="platform-input"
-                    value={brief.inputValue}
-                    onChange={event => updateBrief('inputValue', event.target.value)}
-                    onKeyDown={event => { if (event.key === 'Enter') submitAnswer() }}
-                    placeholder={brief.currentStep < CHAT_QUESTIONS.length ? CHAT_QUESTIONS[brief.currentStep].placeholder : 'Everything is captured. Adjust the brief and build when ready.'}
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={brief.emotionalControls[slider.key]}
+                    onChange={event => updateBrief('emotionalControls', { ...brief.emotionalControls, [slider.key]: Number(event.target.value) })}
                   />
-                  <button type="button" className="platform-secondary-btn" onClick={submitAnswer}>Send</button>
-                </div>
-              </div>
-            )}
+                </label>
+              ))}
+            </div>
           </section>
 
-          <section className="platform-section-card">
+          <section className="platform-section-card platform-section-card--clone">
             <div className="platform-section-head">
-              <span className="platform-kicker">Your Vibe</span>
-              <h2>Set the emotional and visual direction</h2>
+              <span className="platform-kicker">Clone a Site</span>
+              <h2>Pull in structure and vibe</h2>
             </div>
-
-            <label className="platform-field">
-              <span>Extra vibe detail</span>
-              <textarea
-                className="platform-textarea"
-                rows={3}
-                value={brief.vibeText}
-                onChange={event => updateBrief('vibeText', event.target.value)}
-                placeholder="Add mood, texture, tension, references, or anything the page should feel like."
-              />
-            </label>
-
-            <div className="platform-control-block">
-              <span className="platform-field-label">Mood</span>
-              <div className="platform-pill-row">
-                {(['light', 'dark', 'warm'] as MoodOption[]).map(option => (
-                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.mood} onSelect={value => updateBrief('mood', value)} />
-                ))}
+            <div
+              className="platform-clone-dropzone"
+              onDragOver={event => event.preventDefault()}
+              onDrop={event => {
+                event.preventDefault()
+                const droppedUrl = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
+                if (droppedUrl) updateBrief('cloneUrl', droppedUrl.trim())
+              }}
+            >
+              <p>Drag a URL here or paste it</p>
+              <div className="platform-clone-input-row">
+                <input
+                  type="url"
+                  className="platform-input"
+                  value={brief.cloneUrl}
+                  onChange={event => updateBrief('cloneUrl', event.target.value)}
+                  placeholder="Paste any URL to clone its structure and vibe"
+                />
+                <button type="button" className="platform-secondary-btn" onClick={analyzeCloneUrl} disabled={cloneLoading}>
+                  {cloneLoading ? 'Analyzing…' : 'Analyze →'}
+                </button>
               </div>
+              {cloneLoading ? <span className="platform-helper">Analyzing site...</span> : null}
+              {cloneError ? <span className="platform-error-inline">{cloneError}</span> : null}
+              {brief.cloneAnalysis ? (
+                <div className="platform-clone-result">
+                  <p>{summarizeCloneAnalysis(brief.cloneAnalysis)}</p>
+                  <button type="button" className="platform-primary-btn" onClick={queueBuild}>
+                    Clone with my brand →
+                  </button>
+                </div>
+              ) : null}
             </div>
+          </section>
 
-            <div className="platform-control-block">
-              <span className="platform-field-label">Page Type</span>
-              <div className="platform-pill-row">
-                {(['landing', 'store', 'portfolio', 'event'] as PageOption[]).map(option => (
-                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.pageType} onSelect={value => updateBrief('pageType', value)} />
-                ))}
-              </div>
-            </div>
-
+          <AccordionCard title="Design Direction" open={openSections.design} onToggle={() => toggleSection('design')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Design Toolkit</span>
               <div className="platform-pill-row">
@@ -1094,40 +1412,40 @@ export function BriefPage() {
                 ))}
               </div>
             </div>
-          </section>
+          </AccordionCard>
 
-          <section className="platform-section-card">
-            <div className="platform-section-head">
-              <span className="platform-kicker">Emotional Controls</span>
-              <h2>Push the page where it needs pressure</h2>
-            </div>
-            <div className="platform-slider-grid">
-              {EMOTIONAL_SLIDERS.map(slider => (
-                <label key={slider.key} className="platform-slider">
-                  <div className="platform-slider-head">
-                    <span>{slider.label}</span>
-                    <strong>{brief.emotionalControls[slider.key]}</strong>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={brief.emotionalControls[slider.key]}
-                    onChange={event => updateBrief('emotionalControls', { ...brief.emotionalControls, [slider.key]: Number(event.target.value) })}
-                  />
-                  <span>{slider.note}</span>
-                </label>
-              ))}
-            </div>
-          </section>
+          <AccordionCard title="Page Settings" open={openSections.settings} onToggle={() => toggleSection('settings')}>
+            <label className="platform-field">
+              <span>Extra vibe detail</span>
+              <textarea
+                className="platform-textarea"
+                rows={3}
+                value={brief.vibeText}
+                onChange={event => updateBrief('vibeText', event.target.value)}
+                placeholder="Add mood, texture, tension, references, or anything the page should feel like."
+              />
+            </label>
 
-          <section className="platform-section-card">
-            <div className="platform-section-head">
-              <span className="platform-kicker">Direction</span>
-              <h2>Direct the next pass</h2>
+            <div className="platform-control-block">
+              <span className="platform-field-label">Mood</span>
+              <div className="platform-pill-row">
+                {(['light', 'dark', 'warm'] as MoodOption[]).map(option => (
+                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.mood} onSelect={value => updateBrief('mood', value)} />
+                ))}
+              </div>
             </div>
 
+            <div className="platform-control-block">
+              <span className="platform-field-label">Page Type</span>
+              <div className="platform-pill-row">
+                {(['landing', 'store', 'portfolio', 'event'] as PageOption[]).map(option => (
+                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.pageType} onSelect={value => updateBrief('pageType', value)} />
+                ))}
+              </div>
+            </div>
+          </AccordionCard>
+
+          <AccordionCard title="Direction" open={openSections.direction} onToggle={() => toggleSection('direction')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Directing Pass</span>
               <div className="platform-pill-row">
@@ -1169,13 +1487,9 @@ export function BriefPage() {
                 ))}
               </div>
             </div>
-          </section>
+          </AccordionCard>
 
-          <section className="platform-section-card">
-            <div className="platform-section-head">
-              <span className="platform-kicker">Colors</span>
-              <h2>Set the palette anchors</h2>
-            </div>
+          <AccordionCard title="Colors" open={openSections.colors} onToggle={() => toggleSection('colors')}>
             <div className="platform-color-grid">
               {[
                 { key: 'primary' as const, label: 'Primary' },
@@ -1193,16 +1507,47 @@ export function BriefPage() {
                 </label>
               ))}
             </div>
-          </section>
+          </AccordionCard>
 
-          <section className="platform-build-card">
-            <button type="button" className="platform-primary-btn platform-primary-btn--wide" onClick={startBuild} disabled={!canBuild}>
+          <section className="platform-build-card platform-build-card--sticky">
+            <button type="button" className="platform-primary-btn platform-primary-btn--wide" onClick={queueBuild} disabled={!canBuild}>
               Build It →
             </button>
             <button type="button" className="platform-text-link" onClick={openConversation}>
               or have a conversation →
             </button>
           </section>
+
+          {brief.chatExpanded ? (
+            <section ref={conversationRef} className="platform-section-card">
+              <div className="platform-section-head">
+                <span className="platform-kicker">Conversation</span>
+                <h2>Guide the brief in chat</h2>
+              </div>
+              <div className="platform-chat">
+                <div className="platform-chat-messages">
+                  {brief.messages.map((message, index) => (
+                    <div key={`${message.role}-${index}`} className={`platform-chat-bubble platform-chat-bubble--${message.role}`}>
+                      {message.text}
+                    </div>
+                  ))}
+                  {isTyping && <div className="platform-chat-typing">•••</div>}
+                </div>
+                <div className="platform-chat-input-row">
+                  <input
+                    data-brief-chat-input="true"
+                    type="text"
+                    className="platform-input"
+                    value={brief.inputValue}
+                    onChange={event => updateBrief('inputValue', event.target.value)}
+                    onKeyDown={event => { if (event.key === 'Enter') submitAnswer() }}
+                    placeholder={brief.currentStep < CHAT_QUESTIONS.length ? CHAT_QUESTIONS[brief.currentStep].placeholder : 'Everything is captured. Adjust the brief and build when ready.'}
+                  />
+                  <button type="button" className="platform-secondary-btn" onClick={submitAnswer}>Send</button>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </main>
       </div>
     </BuilderErrorBoundary>
@@ -1362,7 +1707,7 @@ export function GeneratePage() {
       ...(brief.carryForwardLocks.length ? { carryForwardLocks: brief.carryForwardLocks } : {}),
       ...(brief.styleBlend.trim() ? { styleBlend: brief.styleBlend.trim() } : {}),
       ...(brief.referenceStyles.length ? { referenceStyles: brief.referenceStyles } : {}),
-      ...(brief.briefInput.trim() ? { rawBrief: brief.briefInput.trim() } : {}),
+      ...(buildRawBriefInput(brief) ? { rawBrief: buildRawBriefInput(brief) } : {}),
     }
 
     try {
@@ -1750,12 +2095,188 @@ export function GeneratePage() {
   )
 }
 
+export function EditorPage() {
+  const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
+  const [editorModel, setEditorModel] = useState<EditableDocumentModel | null>(null)
+  const [textValues, setTextValues] = useState<Record<string, string>>({})
+  const [imageValues, setImageValues] = useState<Record<string, string>>({})
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
+  const [accentOverride, setAccentOverride] = useState('#C9A84C')
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const uploadRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const saved = readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null)
+    setGeneration(saved)
+    if (!saved?.html) return
+
+    const nextModel = buildEditableDocumentModel(saved.html)
+    setEditorModel(nextModel)
+    setTextValues(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text])))
+    setImageValues(Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src])))
+    setAccentOverride(saved.metadata?.palette?.accent || '#C9A84C')
+  }, [])
+
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (!event.data || event.data.source !== 'irie-editor') return
+      if (event.data.type === 'select-text' && typeof event.data.id === 'string') {
+        setSelectedTextId(event.data.id)
+        setSelectedImageId(null)
+      }
+      if (event.data.type === 'select-image' && typeof event.data.id === 'string') {
+        setSelectedImageId(event.data.id)
+        setSelectedTextId(null)
+      }
+      if (event.data.type === 'text-change' && typeof event.data.id === 'string' && typeof event.data.text === 'string') {
+        setTextValues(prev => ({ ...prev, [event.data.id]: event.data.text }))
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
+  useEffect(() => {
+    const contentWindow = iframeRef.current?.contentWindow
+    const baseAccent = generation?.metadata?.palette?.accent || '#C9A84C'
+    if (!contentWindow) return
+    contentWindow.postMessage({ source: 'irie-editor-parent', type: 'set-accent', value: accentOverride, base: baseAccent }, '*')
+  }, [accentOverride, generation])
+
+  function focusTextItem(id: string) {
+    setSelectedTextId(id)
+    setSelectedImageId(null)
+    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-text', id }, '*')
+  }
+
+  function focusImageItem(id: string) {
+    setSelectedImageId(id)
+    setSelectedTextId(null)
+    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-image', id }, '*')
+    uploadRef.current?.click()
+  }
+
+  function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file || !selectedImageId) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      if (!result) return
+      setImageValues(prev => ({ ...prev, [selectedImageId]: result }))
+      iframeRef.current?.contentWindow?.postMessage({
+        source: 'irie-editor-parent',
+        type: 'replace-image',
+        id: selectedImageId,
+        src: result,
+      }, '*')
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
+  function downloadEditedHtml() {
+    if (!generation?.html || !editorModel) return
+    const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
+    const html = buildEditedHtml(editorModel.annotatedHtml, textValues, imageValues, baseAccent, accentOverride)
+    downloadHtml(html, generation.blueprint?.brandCore?.brandName || 'irie-page')
+  }
+
+  return (
+    <BuilderErrorBoundary>
+      <BuilderPlatformStyles />
+      <div className="platform-shell">
+        <PlatformNav current="edit" />
+        <main className="platform-page platform-page--editor">
+          <header className="platform-editor-topbar">
+            <Link href="/generate" className="platform-text-link">← Generate</Link>
+            <div className="platform-editor-topbar-actions">
+              <button type="button" className="platform-secondary-btn" onClick={downloadEditedHtml} disabled={!editorModel}>
+                Download HTML
+              </button>
+              <Link href="/publish" className="platform-primary-btn">Publish →</Link>
+            </div>
+          </header>
+
+          {generation?.html && editorModel ? (
+            <section className="platform-editor-layout">
+              <aside className="platform-editor-sidebar">
+                <div className="platform-editor-panel">
+                  <span className="platform-kicker">Content</span>
+                  <div className="platform-editor-list">
+                    {editorModel.textItems.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
+                        onClick={() => focusTextItem(item.id)}
+                      >
+                        <strong>{item.label}</strong>
+                        <span>{(textValues[item.id] || item.text).slice(0, 96)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="platform-editor-panel">
+                  <span className="platform-kicker">Images</span>
+                  <div className="platform-editor-list">
+                    {editorModel.imageItems.length ? editorModel.imageItems.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
+                        onClick={() => focusImageItem(item.id)}
+                      >
+                        <strong>{item.label}</strong>
+                        <span>Replace this image slot</span>
+                      </button>
+                    )) : <span className="platform-helper">No image slots detected.</span>}
+                  </div>
+                </div>
+
+                <div className="platform-editor-panel">
+                  <span className="platform-kicker">Colors</span>
+                  <label className="platform-color-card platform-color-card--editor">
+                    <input type="color" value={accentOverride} onChange={event => setAccentOverride(event.target.value)} />
+                    <span>Accent Override</span>
+                    <code>{accentOverride}</code>
+                  </label>
+                </div>
+
+                <input ref={uploadRef} type="file" accept="image/*" className="platform-hidden-input" onChange={handleImageUpload} />
+              </aside>
+
+              <div className="platform-editor-preview">
+                <iframe
+                  ref={iframeRef}
+                  title="Editable preview"
+                  className="platform-preview-frame platform-preview-frame--editor"
+                  sandbox="allow-scripts allow-same-origin"
+                  srcDoc={editorModel.frameHtml}
+                />
+              </div>
+            </section>
+          ) : (
+            <section className="platform-empty">
+              <h2>Edit mode coming soon. Your generated page is ready to customize.</h2>
+              <p>Generate a page first, then come back here to continue.</p>
+            </section>
+          )}
+        </main>
+      </div>
+    </BuilderErrorBoundary>
+  )
+}
+
 export function PlaceholderPage({
   mode,
   title,
   body,
 }: {
-  mode: 'edit' | 'publish'
+  mode: 'publish'
   title: string
   body: string
 }) {
@@ -1772,7 +2293,7 @@ export function PlaceholderPage({
         <PlatformNav current={mode} />
         <main className="platform-page platform-page--placeholder">
           <section className="platform-hero-card">
-            <span className="platform-kicker">{mode === 'edit' ? 'Editor' : 'Publish'}</span>
+            <span className="platform-kicker">Publish</span>
             <h1>{title}</h1>
             <p>{body}</p>
             <div className="platform-hero-actions">
@@ -2618,9 +3139,92 @@ const platformCss = `
     margin-top:0.25rem;
   }
 
+  .platform-nav-right{
+    display:flex;
+    align-items:center;
+    gap:0.9rem;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+
+  .platform-primary-btn--nav{
+    padding:0.78rem 1.1rem;
+    font-size:0.68rem;
+  }
+
+  .platform-project-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(260px, 320px));
+    gap:1.1rem;
+  }
+
+  .platform-project-card{
+    display:grid;
+    gap:0.55rem;
+    min-height:260px;
+    padding:1.4rem;
+    border-radius:28px;
+    border:1px solid rgba(201,168,76,0.18);
+    background:
+      radial-gradient(circle at top right, rgba(201,168,76,0.14), transparent 38%),
+      rgba(255,255,255,0.02);
+    color:var(--text);
+    text-decoration:none;
+    box-shadow:var(--shadow);
+    align-content:space-between;
+  }
+
+  .platform-project-card strong{
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:1.6rem;
+  }
+
+  .platform-project-card span:last-child{
+    color:var(--muted);
+    line-height:1.7;
+  }
+
+  .platform-project-plus{
+    width:64px;
+    height:64px;
+    border-radius:20px;
+    display:grid;
+    place-items:center;
+    font-size:2rem;
+    color:#0A0A0A;
+    background:var(--gold);
+  }
+
+  .platform-section-card--recent{
+    overflow:hidden;
+  }
+
+  .platform-recent-layout{
+    display:grid;
+    grid-template-columns:minmax(0, 240px) minmax(0, 1fr);
+    gap:1rem;
+    align-items:stretch;
+  }
+
+  .platform-recent-thumb{
+    min-height:180px;
+    border-radius:22px;
+    overflow:hidden;
+    border:1px solid rgba(201,168,76,0.16);
+    background:#050505;
+  }
+
+  .platform-preview-frame--thumb{
+    height:180px;
+    width:114%;
+    border:none;
+    transform:scale(0.88);
+    transform-origin:top left;
+  }
+
   .platform-recent-card{
     display:flex;
-    justify-content:space-between;
+    flex-direction:column;
     gap:1rem;
     align-items:flex-start;
     padding:1rem 1.1rem;
@@ -2641,6 +3245,212 @@ const platformCss = `
     font-size:0.84rem;
   }
 
+  .platform-brief-label-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0.35rem 0 0.15rem;
+  }
+
+  .platform-slider-grid--compact{
+    grid-template-columns:repeat(5, minmax(0, 1fr));
+    margin-top:1rem;
+  }
+
+  .platform-slider--compact{
+    padding:0.85rem 0.9rem;
+  }
+
+  .platform-slider--compact .platform-slider-head{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:0.25rem;
+  }
+
+  .platform-clone-dropzone{
+    display:grid;
+    gap:0.85rem;
+    padding:1rem;
+    border-radius:24px;
+    border:1px dashed rgba(201,168,76,0.28);
+    background:rgba(255,255,255,0.02);
+  }
+
+  .platform-clone-dropzone > p{
+    margin:0;
+    color:var(--muted);
+  }
+
+  .platform-clone-input-row{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    gap:0.8rem;
+  }
+
+  .platform-clone-result{
+    display:grid;
+    gap:0.9rem;
+    padding:1rem;
+    border-radius:20px;
+    background:rgba(201,168,76,0.08);
+    border:1px solid rgba(201,168,76,0.18);
+  }
+
+  .platform-error-inline{
+    color:#F2A4A4;
+    font-size:0.88rem;
+  }
+
+  .platform-accordion{
+    border:1px solid rgba(201,168,76,0.16);
+    border-radius:24px;
+    background:rgba(255,255,255,0.02);
+    overflow:hidden;
+  }
+
+  .platform-accordion.is-open{
+    background:rgba(201,168,76,0.05);
+    border-color:rgba(201,168,76,0.28);
+  }
+
+  .platform-accordion-toggle{
+    width:100%;
+    min-height:52px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:1rem 1.15rem;
+    border:none;
+    background:none;
+    color:var(--text);
+    font:inherit;
+    font-size:0.82rem;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+
+  .platform-accordion-body{
+    padding:0 1.15rem 1.15rem;
+  }
+
+  .platform-build-card--sticky{
+    position:sticky;
+    bottom:1rem;
+    z-index:20;
+    border:1px solid rgba(201,168,76,0.2);
+    border-radius:26px;
+    background:rgba(10,10,10,0.94);
+    backdrop-filter:blur(18px);
+  }
+
+  .platform-page--editor{
+    display:grid;
+    gap:1rem;
+  }
+
+  .platform-editor-topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:0.25rem 0;
+  }
+
+  .platform-editor-topbar-actions{
+    display:flex;
+    gap:0.8rem;
+    flex-wrap:wrap;
+  }
+
+  .platform-editor-layout{
+    display:grid;
+    grid-template-columns:320px minmax(0, 1fr);
+    gap:1rem;
+    min-height:75dvh;
+  }
+
+  .platform-editor-sidebar,
+  .platform-editor-preview{
+    border:1px solid var(--line);
+    border-radius:26px;
+    background:
+      linear-gradient(180deg, rgba(201,168,76,0.04), rgba(255,255,255,0.01)),
+      var(--panel);
+    box-shadow:var(--shadow);
+  }
+
+  .platform-editor-sidebar{
+    display:grid;
+    gap:1rem;
+    padding:1rem;
+    align-content:start;
+  }
+
+  .platform-editor-panel{
+    display:grid;
+    gap:0.75rem;
+    padding:1rem;
+    border-radius:20px;
+    background:rgba(255,255,255,0.02);
+    border:1px solid rgba(201,168,76,0.12);
+  }
+
+  .platform-editor-list{
+    display:grid;
+    gap:0.7rem;
+  }
+
+  .platform-editor-item{
+    width:100%;
+    display:grid;
+    gap:0.35rem;
+    padding:0.9rem 1rem;
+    text-align:left;
+    color:var(--text);
+    border-radius:18px;
+    border:1px solid rgba(201,168,76,0.14);
+    background:rgba(255,255,255,0.02);
+    cursor:pointer;
+  }
+
+  .platform-editor-item.is-active{
+    border-color:var(--gold);
+    background:rgba(201,168,76,0.09);
+  }
+
+  .platform-editor-item strong{
+    font-size:0.82rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+  }
+
+  .platform-editor-item span{
+    color:var(--muted);
+    line-height:1.55;
+    font-size:0.92rem;
+  }
+
+  .platform-color-card--editor{
+    margin:0;
+  }
+
+  .platform-editor-preview{
+    overflow:hidden;
+    background:#050505;
+  }
+
+  .platform-preview-frame--editor{
+    width:100%;
+    min-height:75dvh;
+    border:none;
+  }
+
+  .platform-hidden-input{
+    display:none;
+  }
+
   @media (max-width: 1200px){
     .platform-page--generate,
     .platform-page--generate.platform-page--rail-collapsed{
@@ -2657,6 +3467,12 @@ const platformCss = `
     }
 
     .platform-desktop-preview{
+      grid-template-columns:1fr;
+    }
+
+    .platform-slider-grid--compact,
+    .platform-editor-layout,
+    .platform-recent-layout{
       grid-template-columns:1fr;
     }
   }
@@ -2676,6 +3492,10 @@ const platformCss = `
     .platform-page{
       width:min(100%, calc(100% - 1rem));
     }
+
+    .platform-clone-input-row{
+      grid-template-columns:1fr;
+    }
   }
 
   @media (max-width: 640px){
@@ -2685,6 +3505,10 @@ const platformCss = `
     }
 
     .platform-nav-links{
+      width:100%;
+    }
+
+    .platform-nav-right{
       width:100%;
     }
 
@@ -2711,6 +3535,11 @@ const platformCss = `
     }
 
     .platform-review-actions{
+      flex-direction:column;
+      align-items:stretch;
+    }
+
+    .platform-editor-topbar{
       flex-direction:column;
       align-items:stretch;
     }
