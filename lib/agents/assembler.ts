@@ -57,14 +57,17 @@ export async function runAssembler(
   // Sonnet for the same token budget, which keeps us inside the 60s Vercel
   // wall after the upstream agents have already spent ~20-25s. Creativity
   // lives upstream; this role is just wiring decisions into HTML.
-  // Tight token budget so we stay under the Vercel 60s wall after 24s of
-  // upstream agent work. Haiku at ~200 tok/s → 4500 tokens ≈ 22s.
+  // After 24-26s of upstream agent work we have ~28s before the Vercel
+  // 60s wall. Haiku with a large prompt (all 6 agent outputs) runs at
+  // ~150 tok/s in practice, so 3500 tokens ≈ 23s — finishes cleanly
+  // inside the budget. Leaner HTML, but the visual system is carried by
+  // the injected irie-motion-system CSS/JS, not agent-generated tokens.
   const html = await callTextAgent({
     model: MODELS.haiku,
     system: buildSystem(),
     user,
-    maxTokens: 4500,
-    timeoutMs: 26000,
+    maxTokens: 3500,
+    timeoutMs: 27000,
     label: 'assembler',
   })
   if (!html || html.length < 200) {
