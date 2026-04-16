@@ -1,5 +1,8 @@
-import { callTextAgent, MODELS } from './anthropic'
+import { callTextAgent } from './anthropic'
 import type { BriefInput, AgentOutputs } from './types'
+import { AGENT_CONFIG } from './config'
+import { logWarn } from '@/lib/logging'
+import { PRESET_PLACEHOLDER_VALUES } from '@/lib/constants/presetPlaceholders'
 
 /**
  * Assembler — takes every upstream agent decision and executes them into
@@ -62,19 +65,22 @@ OUTPUT: ONLY complete HTML. No markdown. No backticks. No explanation.`
 export async function runAssembler(
   brief: BriefInput,
   agents: AgentOutputs,
+  requestId: string,
 ): Promise<string> {
   const user = buildUserPrompt(brief, agents)
   // Haiku is the right fit for execution-only work: it's ~3x faster than
   // Sonnet for the same token budget, which keeps us inside the 60s Vercel
   // wall after the upstream agents have already spent ~20-25s. Creativity
   // lives upstream; this role is just wiring decisions into HTML.
+  const config = AGENT_CONFIG.assembler
   const html = await callTextAgent({
-    model: MODELS.haiku,
+    model: config.model,
     system: buildSystem(),
     user,
-    maxTokens: 3500,
-    timeoutMs: 27000,
+    maxTokens: config.maxTokens,
+    timeoutMs: config.timeoutMs,
     label: 'assembler',
+    requestId,
   })
   const resolvedBrand = resolveBrandName(brief)
   if (!html || html.length < 200) {
@@ -85,7 +91,7 @@ export async function runAssembler(
   // won't have a <body> or </html>. The skeleton fallback is better than
   // a broken page missing its content section.
   if (!cleaned.includes('<body') || !/<\/html>\s*$/.test(cleaned)) {
-    console.warn('[assembler] output looked truncated, using fallback')
+    logWarn('assembler output looked truncated, using fallback', { requestId })
     return finalizeHtml(buildFallbackHtml(brief, agents), resolvedBrand)
   }
   return finalizeHtml(cleaned, resolvedBrand)
@@ -97,93 +103,44 @@ function resolveBrandName(brief: BriefInput): string {
 }
 
 function buildUserPrompt(brief: BriefInput, agents: AgentOutputs): string {
-  const { creativeDirection, brandVoice, psychologyPlan, artDirection, motionPlan, mobilePlan } = agents
+  const {
+    creativeDirection,
+    brandVoice,
+    psychologyPlan,
+    artDirection,
+    motionPlan,
+    mobilePlan,
+  } = agents
+  const short = (value: string | undefined, limit = 140) =>
+    value ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : ''
+  const joinLimited = (items: string[], limit = 60, count = 3) =>
+    items
+      .filter(Boolean)
+      .slice(0, count)
+      .map(item => short(item, limit))
+      .join(', ')
   const sectionNotes = brandVoice.sectionCopyNotes
-    .map(n => `- ${n.section}: ${n.note}`)
-    .join('\n')
-  const emotionSeq = psychologyPlan.emotionSequence
-    .map(s => `- ${s.stage.toUpperCase()}: ${s.treatment}`)
-    .join('\n')
-  const simplifications = mobilePlan.mobileSimplifications.map(s => `- ${s}`).join('\n')
+    .slice(0, 3)
+    .map(note => `${note.section}:${short(note.note, 110)}`)
+    .join(' · ') || 'none'
+  const frictions = joinLimited(psychologyPlan.frictionPoints, 65)
+  const simplifications = joinLimited(mobilePlan.mobileSimplifications, 80)
+  const contentImages = joinLimited(brief.contentImages, 80)
+  const resolvedBrand = resolveBrandName(brief)
+  const heroImage = short(brief.heroImageUrl, 180)
+  const tone = short(brandVoice.toneProfile, 80)
 
-  return `== AGENT DECISIONS (execute these exactly) ==
-
-CREATIVE DIRECTOR:
-- Emotional target: ${creativeDirection.emotionalTarget}
-- Energy level: ${creativeDirection.energyLevel}
-- Overall direction: ${creativeDirection.overallDirection}
-- Creative summary: ${creativeDirection.creativeSummary}
-- Section order: ${creativeDirection.sectionOrder.join(' -> ')}
-
-BRAND VOICE:
-- Tone profile: ${brandVoice.toneProfile}
-- Hero headline (VERBATIM): "${brandVoice.heroHeadline}"
-- Hero subheadline (VERBATIM): "${brandVoice.heroSubheadline}"
-- CTA text (VERBATIM): "${brandVoice.ctaText}"
-- Pull-quote (place in trust section): "${brandVoice.pullQuote}"
-- Section copy notes:
-${sectionNotes}
-
-PSYCHOLOGY DIRECTOR:
-- Emotion sequence:
-${emotionSeq}
-- Trust placement: ${psychologyPlan.trustPlacement}
-- CTA timing: ${psychologyPlan.ctaTiming}
-- Proof strategy: ${psychologyPlan.proofStrategy}
-- Friction points to remove: ${psychologyPlan.frictionPoints.join(', ')}
-
-ART DIRECTOR:
-- Display font: ${artDirection.typographySystem.displayFont}
-- Body font: ${artDirection.typographySystem.bodyFont}
-- Type scale: ${artDirection.typographySystem.scale}
-- Type pairing note: ${artDirection.typographySystem.pairing}
-- Canvas: ${artDirection.colorPalette.canvas}
-- Accent: ${artDirection.colorPalette.accent}
-- Text: ${artDirection.colorPalette.text}
-- Muted: ${artDirection.colorPalette.muted}
-- Highlight: ${artDirection.colorPalette.highlight}
-- Palette notes: ${artDirection.colorPalette.notes}
-- Layout rhythm: ${artDirection.layoutRhythm}
-- Contrast strategy: ${artDirection.contrastStrategy}
-- Atmosphere: ${artDirection.atmosphereSummary}
-
-MOTION DIRECTOR:
-- Motion intensity: ${motionPlan.motionIntensity}
-- Reveal behavior: ${motionPlan.revealBehavior}
-- Transition style: ${motionPlan.transitionStyle}
-- Scroll rhythm: ${motionPlan.scrollRhythm}
-- Atmosphere movement: ${motionPlan.atmosphereMovement}
-
-MOBILE DIRECTOR:
-- First viewport strategy: ${mobilePlan.firstViewportStrategy}
-- Mobile simplifications:
-${simplifications}
-- Thumb-friendly notes: ${mobilePlan.thumbFriendlyNotes}
-- Mobile motion rules: ${mobilePlan.mobileMotionRules}
-
-== CONTENT INPUTS ==
-Brand name: ${resolveBrandName(brief)}
-Audience: ${brief.audience || '(implied by vibe)'}
-Page type: ${brief.pageType}
-Hero background image (USE THIS EXACTLY): ${brief.heroImageUrl}
-Content images (for feature cards / atmosphere / proof):
-${brief.contentImages.join('\n')}
-
-== REQUIREMENTS ==
-- <html lang>, <head> with <meta viewport>, OG tags, title derived from brand name.
-- Google Fonts <link> for the Art Director's chosen fonts.
-- Inline <style> carrying all visual tokens from Art Director.
-- Hero section: background-image:url('${brief.heroImageUrl}') cover center, min-height:100vh. Include .orb-1/.orb-2/.orb-3 divs.
-- Body has class="grain".
-- Apply .reveal / .reveal-left / .reveal-right / .reveal-scale across sections in alternating pattern.
-- .stagger on multi-child containers.
-- Marquee strip with 8-12 brand keywords.
-- Proof section lands DIRECTLY before the CTA section.
-- Single primary CTA. Button matches accent color.
-- Mobile @media queries: 1-column grid under 768px, 44px tap targets, full-width CTA.
-- End with the Built-with-Irie-Builder comment.
-
-Output ONLY complete HTML.`
+  return [
+    'AGENT BRIEF',
+    `Creative: ${short(creativeDirection.overallDirection, 220)} | Target ${short(creativeDirection.emotionalTarget, 90)} | Energy ${creativeDirection.energyLevel} | Sections ${creativeDirection.sectionOrder.join('→')}`,
+    `Brand voice: Tone ${tone || 'n/a'} | Hero "${short(brandVoice.heroHeadline, 120)}" | Sub "${short(brandVoice.heroSubheadline, 120)}" | CTA "${short(brandVoice.ctaText, 90)}" | Pull "${short(brandVoice.pullQuote, 110)}" | Notes ${sectionNotes}`,
+    `Psychology: Trust ${short(psychologyPlan.trustPlacement, 120)} | CTA ${short(psychologyPlan.ctaTiming, 100)} | Proof ${short(psychologyPlan.proofStrategy, 120)} | Friction ${frictions || 'none'}`,
+    `Art: Fonts ${short(artDirection.typographySystem.displayFont, 80)}/${short(artDirection.typographySystem.bodyFont, 80)} | Palette ${short(artDirection.colorPalette.canvas, 20)}/${short(artDirection.colorPalette.accent, 20)}/${short(artDirection.colorPalette.text, 20)} | Layout ${short(artDirection.layoutRhythm, 120)} | Contrast ${short(artDirection.contrastStrategy, 100)} | Atmosphere ${short(artDirection.atmosphereSummary, 120)}`,
+    `Motion: ${short(motionPlan.revealBehavior, 120)} | Transition ${short(motionPlan.transitionStyle, 80)} | Cadence ${short(motionPlan.scrollRhythm, 80)} | Atmosphere ${short(motionPlan.atmosphereMovement, 120)} | Intensity ${motionPlan.motionIntensity}`,
+    `Mobile: Viewport ${short(mobilePlan.firstViewportStrategy, 120)} | Simplify ${simplifications || 'none'} | Thumb ${short(mobilePlan.thumbFriendlyNotes, 100)} | Motion ${short(mobilePlan.mobileMotionRules, 120)}`,
+    `Inputs: Brand ${short(resolvedBrand, 80)} | Audience ${short(brief.audience, 60) || 'implied'} | Type ${short(brief.pageType, 40)} | Hero image ${heroImage} | Content images ${contentImages || 'none'}`,
+    `Rules: Keep psychology treatments internal (guidance-only) and never repeat those sentences or any phrase containing section/scroll/CTA/trust/friction/placement. Follow brand voice EXACT hero/sub/CTA, maintain section order ${creativeDirection.sectionOrder.join(' → ')}, keep proof before CTA, include hero .orb-1/.orb-2/.orb-3, body class grain, 44px tap targets, an 8-12 keyword marquee sourced from ${short(creativeDirection.emotionalTarget, 80)} + ${tone || 'tone'}, inline <style> with the palette tokens, and close with the Irie Builder comment. Output complete HTML with <html lang>, <head>/<meta>/<title>/<OG>, and the provided images. No markdown or fences.`,
+  ].join('\n')
 }
 
 /**
@@ -211,6 +168,9 @@ function buildFallbackHtml(brief: BriefInput, agents: AgentOutputs): string {
     : [...brief.contentImages, heroImg, heroImg, heroImg, heroImg].slice(0, 4)
   const sectionNote = (key: string, fallback: string) =>
     brandVoice.sectionCopyNotes.find(n => n.section.toLowerCase().includes(key))?.note || fallback
+  const curiosityHeading = sectionNote('story', creativeDirection.creativeSummary) || creativeDirection.creativeSummary || 'Why it hits different'
+  const desireHeading = sectionNote('difference', brandVoice.pullQuote) || brandVoice.pullQuote
+  const actionHeading = sectionNote('cta', brandVoice.heroHeadline) || brandVoice.heroHeadline
   const marqueeWords = buildMarqueeKeywords(creativeDirection.emotionalTarget, brandVoice.toneProfile)
   return `<!DOCTYPE html>
 <html lang="en">
@@ -316,7 +276,7 @@ ${marqueeWords.map(w => `<span>${w}</span><span>·</span>`).join('')}
 <section class="section reveal-left">
 <div class="wrap">
 <p class="eyebrow">Why it hits different</p>
-<h2>${psychologyPlan.emotionSequence.find(s => s.stage === 'curiosity')?.treatment.split('.')[0] || 'Made for the people who feel it before they explain it.'}</h2>
+<h2>${curiosityHeading}</h2>
 <div class="inner stagger">
 <div>
 <p class="lead">${sectionNote('story', creativeDirection.creativeSummary)}</p>
@@ -331,7 +291,7 @@ ${marqueeWords.map(w => `<span>${w}</span><span>·</span>`).join('')}
 <section class="section reveal-right">
 <div class="wrap">
 <p class="eyebrow">The work</p>
-<h2>${psychologyPlan.emotionSequence.find(s => s.stage === 'desire')?.treatment.split('.')[0] || brandVoice.pullQuote}</h2>
+<h2>${desireHeading}</h2>
 <div class="cards stagger">
 <div class="card"><h3>Drop 01</h3><p>${sectionNote('drop', 'Small runs. Printed in-house. Never restocked.')}</p><img src="${img2}" alt=""></div>
 <div class="card"><h3>Drop 02</h3><p>${sectionNote('collection', 'Every piece carries a story you can wear on your shoulder.')}</p><img src="${img3}" alt=""></div>
@@ -352,7 +312,7 @@ ${marqueeWords.map(w => `<span>${w}</span><span>·</span>`).join('')}
 <section class="cta-section reveal" id="cta">
 <div class="wrap">
 <p class="eyebrow">${creativeDirection.energyLevel}</p>
-<h2>${psychologyPlan.emotionSequence.find(s => s.stage === 'action')?.treatment.split('.')[0] || brandVoice.heroHeadline}</h2>
+<h2>${actionHeading}</h2>
 <p class="lead" style="max-width:42ch;margin:0 auto 40px">${brandVoice.heroSubheadline}</p>
 <a class="cta" href="#">${brandVoice.ctaText}</a>
 </div>
@@ -415,7 +375,7 @@ function inferBrandFromVibe(text: string): string {
 function isPlaceholderName(name: string | undefined): boolean {
   if (!name) return false
   const normalized = name.trim().toLowerCase()
-  return /^your\s+[a-z]+$/.test(normalized)
+  return PRESET_PLACEHOLDER_VALUES.some(value => value.toLowerCase() === normalized) || /^your\s+[a-z]+$/.test(normalized)
 }
 
 /**
@@ -426,7 +386,12 @@ function isPlaceholderName(name: string | undefined): boolean {
  */
 function sanitizePlaceholders(html: string, brand: string): string {
   const safe = brand || 'Untitled'
-  return html.replace(/\bYour\s+(Brand|Name|Restaurant|Event|Shop|Company|Business)\b/gi, safe)
+  const sharedPlaceholders = PRESET_PLACEHOLDER_VALUES.map(escapeRegExp).join('|')
+  return html.replace(new RegExp(`\\b(?:${sharedPlaceholders}|Your\\s+(?:Shop|Company|Business))\\b`, 'gi'), safe)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function finalizeHtml(html: string, brand: string): string {

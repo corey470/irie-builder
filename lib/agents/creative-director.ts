@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { creativeDirectionFallback } from './fallbacks'
 import type { BriefInput, CreativeDirection } from './types'
 
@@ -29,15 +30,16 @@ Schema:
   "sectionOrder": string[]
 }`
 
-export async function runCreativeDirector(brief: BriefInput): Promise<CreativeDirection> {
+export async function runCreativeDirector(brief: BriefInput, requestId: string): Promise<CreativeDirection> {
   const user = buildUserPrompt(brief)
   const out = await callJsonAgent<CreativeDirection>({
-    model: MODELS.sonnet,
+    model: AGENT_CONFIG.creativeDirector.model,
     system: SYSTEM,
     user,
-    maxTokens: 500,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.creativeDirector.maxTokens,
+    timeoutMs: AGENT_CONFIG.creativeDirector.timeoutMs,
     label: 'creative-director',
+    requestId,
   })
   if (!out || !out.emotionalTarget || !out.energyLevel) {
     return creativeDirectionFallback(brief)

@@ -114,8 +114,8 @@ export function mobilePlanFallback(_brief: BriefInput): MobilePlan {
 
 export function criticFallback(): CriticOutput {
   return {
-    verdict: 'Output landed cleanly, but the review pass was not able to produce a full score.',
-    summary: 'Base critique applied — refine on the next pass for sharper specificity.',
+    verdict: "Critic review is pending; treat this as a snapshot and rerun once the draft settles.",
+    summary: 'This quick scan kept the pipeline moving. Rerun when the current layout feels locked to capture the full critique.',
     scores: {
       firstImpression: 7,
       emotionalClarity: 7,

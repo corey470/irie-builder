@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { logError } from '@/lib/logging'
 
 /**
  * Loads reference markdown files (PSYCHOLOGY, DESIGN, DESIGN_DIRECTIONS)
@@ -20,7 +21,10 @@ function tryRead(filename: string): string {
   try {
     return fs.readFileSync(path.join(process.cwd(), filename), 'utf8')
   } catch (err) {
-    console.error(`[md-loader] failed to read ${filename}:`, err)
+    logError('md-loader failed to read file', {
+      filename,
+      errorMessage: err instanceof Error ? err.message : String(err),
+    })
     return ''
   }
 }

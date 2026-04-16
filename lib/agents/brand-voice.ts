@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { brandVoiceFallback } from './fallbacks'
 import type { BriefInput, BrandVoice, CreativeDirection } from './types'
 
@@ -12,6 +13,7 @@ const SYSTEM = `You are the Brand Voice agent for Irie Builder. You write copy t
 
 Rules from PSYCHOLOGY.md:
 - Write like you're talking to someone at a stoplight.
+- Avoid the literal words section, scroll, CTA, trust, friction, and placement in any user-facing sentence.
 - Replace every adjective with a fact or a scene.
 - Headlines: max 8 words, present tense, feeling-first.
 - CTAs: say what happens next, not what the button does ("Step inside" > "Learn More").
@@ -30,7 +32,11 @@ Schema:
   "pullQuote": string
 }`
 
-export async function runBrandVoice(brief: BriefInput, direction: CreativeDirection): Promise<BrandVoice> {
+export async function runBrandVoice(
+  brief: BriefInput,
+  direction: CreativeDirection,
+  requestId: string,
+): Promise<BrandVoice> {
   const user = `Creative thesis: ${direction.overallDirection}
 Emotional target: ${direction.emotionalTarget}
 Energy level: ${direction.energyLevel}
@@ -48,12 +54,13 @@ ${brief.userFeedback ? `User feedback: ${brief.userFeedback}` : ''}
 Write copy for: hero headline, hero subheadline, one-line notes for 3-5 sections (hero, story, feature, proof, cta), the CTA button text, and a pull-quote that could sit in a trust section.`
 
   const out = await callJsonAgent<BrandVoice>({
-    model: MODELS.sonnet,
+    model: AGENT_CONFIG.brandVoice.model,
     system: SYSTEM,
     user,
-    maxTokens: 800,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.brandVoice.maxTokens,
+    timeoutMs: AGENT_CONFIG.brandVoice.timeoutMs,
     label: 'brand-voice',
+    requestId,
   })
   if (!out || !out.heroHeadline) return brandVoiceFallback(brief)
   // Respect verbatim inputs even if the agent tried to paraphrase

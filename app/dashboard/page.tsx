@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { Component, ErrorInfo, ReactNode, useState, useRef, useEffect, useCallback } from 'react'
+import { PRESET_PLACEHOLDERS } from '@/lib/constants/presetPlaceholders'
 
 /* ── TYPES ─────────────────────────────────────── */
 
@@ -63,7 +64,7 @@ const AGENT_ROSTER: Array<{ name: AgentName; label: string; description: string 
   { name: 'critic', label: 'Critic', description: 'preparing review' },
 ]
 
-type AgentStatusMap = Partial<Record<AgentName, AgentState>>
+type AgentStatusMap = Record<string, AgentState>
 
 function emptyAgentStatus(): AgentStatusMap {
   const m: AgentStatusMap = {}
@@ -76,9 +77,42 @@ function stateLabel(state: AgentState): string {
     case 'waiting': return 'waiting'
     case 'working': return 'working'
     case 'done': return 'done'
-    case 'failed': return 'fallback'
+    case 'failed': return 'failed'
   }
 }
+
+function AgentStatusRow({
+  label,
+  description,
+  state,
+}: {
+  label: string
+  description: string
+  state: AgentState
+}) {
+  return (
+    <li className={`db-agent-row db-agent-row--${state}`}>
+      <span className={`db-agent-dot db-agent-dot--${state}`} aria-hidden="true">
+        {state === 'done' ? '✓' : state === 'failed' ? '✕' : ''}
+      </span>
+      <span className="db-agent-label">{label}</span>
+      <span className="db-agent-desc">{description}</span>
+      <span className={`db-agent-state db-agent-state--${state}`}>{stateLabel(state)}</span>
+      {state === 'failed' && (
+        <span className="db-agent-recovery">Continuing…</span>
+      )}
+    </li>
+  )
+}
+
+function humanizeAgentLabel(name: string): string {
+  return name
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const GENERIC_AGENT_DESCRIPTION = 'An extra creative collaborator is keeping watch.'
 
 interface EmotionalControls {
   authority: number
@@ -205,6 +239,134 @@ function summarizeChange(previous: GenerationSnapshot | null, currentBlueprint: 
   }
 }
 
+interface StreamPayload {
+  html?: unknown
+  metadata?: unknown
+  blueprint?: unknown
+  critique?: unknown
+  decisions?: unknown
+}
+
+interface SafeStreamPayload {
+  html: string
+  metadata: Metadata | null
+  blueprint: GenerationBlueprint | null
+  critique: GenerationCritique | null
+  decisions: CreativeDecision[]
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isMetadata(value: unknown): value is Metadata {
+  return (
+    isObject(value) &&
+    Array.isArray(value.fonts) &&
+    Array.isArray(value.sections) &&
+    isObject(value.palette) &&
+    Array.isArray(value.motionVocabulary)
+  )
+}
+
+function isGenerationBlueprint(value: unknown): value is GenerationBlueprint {
+  return (
+    isObject(value) &&
+    isObject(value.brandCore) &&
+    isObject(value.designSystem) &&
+    isObject(value.motionSystem) &&
+    isObject(value.persuasionSystem) &&
+    Array.isArray(value.storyArc) &&
+    Array.isArray(value.sections)
+  )
+}
+
+function isGenerationCritique(value: unknown): value is GenerationCritique {
+  return (
+    isObject(value) &&
+    typeof value.summary === 'string' &&
+    typeof value.verdict === 'string' &&
+    Array.isArray(value.scores) &&
+    Array.isArray(value.recommendations)
+  )
+}
+
+function isCreativeDecision(value: unknown): value is CreativeDecision {
+  return (
+    isObject(value) &&
+    typeof value.label === 'string' &&
+    typeof value.value === 'string'
+  )
+}
+
+function parseStreamPayload(value: unknown): SafeStreamPayload {
+  if (!isObject(value)) {
+    throw new Error('Stream payload is not an object.')
+  }
+  const htmlCandidate = value.html
+  if (typeof htmlCandidate !== 'string' || !htmlCandidate.trim()) {
+    throw new Error('Stream payload did not include valid HTML.')
+  }
+  const decisionsArray = Array.isArray(value.decisions)
+    ? value.decisions.filter(isCreativeDecision)
+    : []
+
+  return {
+    html: htmlCandidate,
+    metadata: isMetadata(value.metadata) ? value.metadata : null,
+    blueprint: isGenerationBlueprint(value.blueprint) ? value.blueprint : null,
+    critique: isGenerationCritique(value.critique) ? value.critique : null,
+    decisions: decisionsArray,
+  }
+}
+
+function isAgentState(value: unknown): value is AgentState {
+  return value === 'waiting' || value === 'working' || value === 'done' || value === 'failed'
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+}
+
+class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  override state: ErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    /* swallow errors silently; fallback UI tells the user what to do */
+  }
+
+  handleReset = () => {
+    if (typeof window !== 'undefined') {
+      window.location.reload()
+    } else {
+      this.setState({ hasError: false })
+    }
+  }
+
+  override render() {
+    if (!this.state.hasError) {
+      return this.props.children
+    }
+    return (
+      <div className="db-error-boundary">
+        <div className="db-error-boundary-panel">
+          <p className="db-error-boundary-kicker">Something went wrong.</p>
+          <p className="db-error-boundary-copy">
+            We hit a snag while rendering this view. Reload the dashboard or try generating again.
+          </p>
+          <button type="button" className="db-action-btn" onClick={this.handleReset}>
+            Reload dashboard
+          </button>
+        </div>
+      </div>
+    )
+  }
+}
+
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
 type DesignDirectionOption = 'auto' | 'nike' | 'apple' | 'vercel' | 'stripe' | 'framer' | 'notion' | 'spotify'
@@ -282,34 +444,36 @@ interface Preset {
   colors: { primary: string; accent: string; background: string }
 }
 
+const { brand: YOUR_BRAND, restaurant: YOUR_RESTAURANT, name: YOUR_NAME, event: YOUR_EVENT } = PRESET_PLACEHOLDERS
+
 const PRESETS: Preset[] = [
   {
     label: 'Streetwear Brand',
-    answers: ['Your Brand', 'Bold, urban, premium streetwear. The energy of a drop day. Confident, slightly rebellious, always authentic.', 'Culture-driven streetwear fans 18-35', 'Built different. Worn proud.', 'skip', 'Shop the Drop'],
+    answers: [YOUR_BRAND, 'Bold, urban, premium streetwear. The energy of a drop day. Confident, slightly rebellious, always authentic.', 'Culture-driven streetwear fans 18-35', 'Built different. Worn proud.', 'skip', 'Shop the Drop'],
     mood: 'dark', pageType: 'store', designDirection: 'nike',
     colors: { primary: '#0A0A0A', accent: '#E8C547', background: '#0A0A0A' },
   },
   {
     label: 'Luxury Brand',
-    answers: ['Your Brand', 'Quiet luxury. Refined, minimal, timeless. The feeling of quality before you even touch it.', 'Discerning buyers 30-55 who value craftsmanship over logos', 'Refined by design. Defined by you.', 'skip', 'Explore the Collection'],
+    answers: [YOUR_BRAND, 'Quiet luxury. Refined, minimal, timeless. The feeling of quality before you even touch it.', 'Discerning buyers 30-55 who value craftsmanship over logos', 'Refined by design. Defined by you.', 'skip', 'Explore the Collection'],
     mood: 'light', pageType: 'store', designDirection: 'apple',
     colors: { primary: '#1A1A1A', accent: '#C9A84C', background: '#F8F5F0' },
   },
   {
     label: 'Restaurant',
-    answers: ['Your Restaurant', 'Warm, soulful, inviting. The smell of something good cooking. Neighborhood spot with a premium feel.', 'Local food lovers and experience seekers 25-55', 'Food that stays with you.', 'skip', 'Reserve a Table'],
+    answers: [YOUR_RESTAURANT, 'Warm, soulful, inviting. The smell of something good cooking. Neighborhood spot with a premium feel.', 'Local food lovers and experience seekers 25-55', 'Food that stays with you.', 'skip', 'Reserve a Table'],
     mood: 'warm', pageType: 'landing', designDirection: 'notion',
     colors: { primary: '#1C0F00', accent: '#D47C2F', background: '#FDF6EC' },
   },
   {
     label: 'Creator Portfolio',
-    answers: ['Your Name', 'Creative, editorial, confident. The portfolio of someone who knows exactly what they do and does it exceptionally well.', 'Brands and businesses looking for creative partnership', 'This is my work.', 'skip', 'See My Work'],
+    answers: [YOUR_NAME, 'Creative, editorial, confident. The portfolio of someone who knows exactly what they do and does it exceptionally well.', 'Brands and businesses looking for creative partnership', 'This is my work.', 'skip', 'See My Work'],
     mood: 'dark', pageType: 'portfolio', designDirection: 'framer',
     colors: { primary: '#080808', accent: '#FF4D00', background: '#080808' },
   },
   {
     label: 'Event Page',
-    answers: ['Your Event', 'High energy, exclusive, electric. The anticipation before the doors open. FOMO in the best way.', 'Event-goers and culture community 21-40', "You don't want to miss this.", 'skip', 'Get Your Tickets'],
+    answers: [YOUR_EVENT, 'High energy, exclusive, electric. The anticipation before the doors open. FOMO in the best way.', 'Event-goers and culture community 21-40', "You don't want to miss this.", 'skip', 'Get Your Tickets'],
     mood: 'dark', pageType: 'event', designDirection: 'spotify',
     colors: { primary: '#0A0008', accent: '#9B5DE5', background: '#0A0008' },
   },
@@ -431,7 +595,7 @@ interface ChatMessage {
 
 /* ── DASHBOARD PAGE ────────────────────────────── */
 
-export default function DashboardPage() {
+function DashboardPageContent() {
   /* Just Build It state */
   const [briefInput, setBriefInput] = useState('')
   const [chatExpanded, setChatExpanded] = useState(false)
@@ -443,6 +607,7 @@ export default function DashboardPage() {
   const [isTyping, setIsTyping] = useState(false)
   const [chatPhase, setChatPhase] = useState<'conversation' | 'generating' | 'complete' | 'feedback'>('conversation')
   const [answers, setAnswers] = useState<string[]>([])
+  const [presetReady, setPresetReady] = useState(false)
 
   /* form state — Your Vibe */
   const [vibeText, setVibeText] = useState('')
@@ -570,6 +735,7 @@ export default function DashboardPage() {
     collectedAnswers?: string[],
     feedback?: string,
     rawBrief?: string,
+    revisionOverride?: string,
   ) => {
     const brandName = collectedAnswers?.[0] || ''
     const vibe = collectedAnswers?.[1] || ''
@@ -582,7 +748,9 @@ export default function DashboardPage() {
     const isSkip = heroRaw.toLowerCase() === 'skip' || heroRaw.trim() === ''
 
     const mergedVibe = vibeText.trim() ? `${vibe}. ${vibeText.trim()}` : vibe
-    const finalVibe = feedback ? `${mergedVibe} — User feedback: ${feedback}` : mergedVibe
+    const directiveText = (revisionOverride ?? revisionDirective).trim()
+    const feedbackText = feedback?.trim()
+    const finalVibe = feedbackText ? `${mergedVibe} — User feedback: ${feedbackText}` : mergedVibe
 
     // For rawBrief mode, we only need the brief
     if (!rawBrief && !brandName.trim() && !finalVibe.trim()) return
@@ -590,7 +758,7 @@ export default function DashboardPage() {
     const nextGenerationLabel = buildGenerationLabel({
       nextCount: genCount + 1,
       sectionFocus,
-      revisionDirective,
+      revisionDirective: directiveText,
     })
 
     setLoading(true)
@@ -628,11 +796,10 @@ export default function DashboardPage() {
       designDirection,
       emotionalControls,
       ...(sectionFocus !== 'whole-page' ? { sectionFocus } : {}),
-      ...(revisionDirective.trim() ? { revisionDirective: revisionDirective.trim() } : {}),
+      ...(directiveText ? { revisionDirective: directiveText } : {}),
       ...(carryForwardLocks.length ? { carryForwardLocks } : {}),
       ...(styleBlend.trim() ? { styleBlend: styleBlend.trim() } : {}),
       ...(referenceStyles.length ? { referenceStyles } : {}),
-      ...(feedback ? { userFeedback: feedback } : {}),
       ...(rawBrief ? { rawBrief } : {}),
     }
 
@@ -653,7 +820,7 @@ export default function DashboardPage() {
         throw new Error(msg)
       }
 
-      let data: Record<string, unknown> | null = null
+      let data: unknown | null = null
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -674,14 +841,17 @@ export default function DashboardPage() {
           } catch {
             continue
           }
-          if (event.type === 'status' && typeof event.agent === 'string' && typeof event.state === 'string') {
-            const agent = event.agent as AgentName
-            const state = event.state as AgentState
+          if (event.type === 'status'
+            && typeof event.agent === 'string'
+            && isAgentState(event.state)
+          ) {
+            const agent = event.agent
+            const state = event.state
             setAgentStatus(prev => ({ ...prev, [agent]: state }))
           } else if (event.type === 'complete' && event.payload) {
-            data = event.payload as Record<string, unknown>
+            data = event.payload
           } else if (event.type === 'error' && typeof event.message === 'string') {
-            throw new Error(event.message as string)
+            throw new Error(event.message)
           }
         }
       }
@@ -697,14 +867,16 @@ export default function DashboardPage() {
         throw new Error('Stream ended without a complete payload.')
       }
 
-      setHtml(data.html as string)
-      setMetadata(data.metadata as Metadata)
-      setBlueprint((data.blueprint as GenerationBlueprint | undefined) || null)
-      setCritique((data.critique as GenerationCritique | undefined) || null)
+      const parsedPayload = parseStreamPayload(data)
+
+      setHtml(parsedPayload.html)
+      setMetadata(parsedPayload.metadata)
+      setBlueprint(parsedPayload.blueprint)
+      setCritique(parsedPayload.critique)
       setGenerationHistory(prev => [
         {
           label: nextGenerationLabel,
-          verdict: ((data.critique as GenerationCritique | undefined)?.verdict) || 'New pass generated.',
+          verdict: parsedPayload.critique?.verdict || 'New pass generated.',
         },
         ...prev,
       ].slice(0, 6))
@@ -713,14 +885,14 @@ export default function DashboardPage() {
       setPreviewMode(previousGeneration || html ? 'before-after' : 'current')
 
       // Parse creative decisions from response
-      const apiDecisions = (data.decisions as CreativeDecision[] | undefined) || []
+      const apiDecisions = parsedPayload.decisions
       if (apiDecisions.length > 0) {
         setDecisions(apiDecisions)
         setVisibleDecisions(apiDecisions.length)
       }
 
-      writeIframeDocument(iframeRef.current, data.html as string)
-      writeIframeDocument(mobileIframeRef.current, data.html as string)
+      writeIframeDocument(iframeRef.current, parsedPayload.html)
+      writeIframeDocument(mobileIframeRef.current, parsedPayload.html)
 
       // UPGRADE 5 — 3-bubble completion
       setChatPhase('complete')
@@ -754,6 +926,19 @@ export default function DashboardPage() {
     }
   }, [vibeText, primary, accent, background, mood, pageType, designDirection, styleBlend, referenceStyles, emotionalControls, html, blueprint, critique, genCount, previousGeneration, sectionFocus, revisionDirective, generationHistory, carryForwardLocks, writeIframeDocument])
 
+  const handleGenerateFromPreset = useCallback(() => {
+    if (loading || !presetReady) return
+    if (answers.length !== CHAT_QUESTIONS.length) return
+    setPresetReady(false)
+    setIsTyping(true)
+    setTimeout(() => {
+      setIsTyping(false)
+      setMessages(prev => [...prev, { role: 'ai', text: 'Got it. Building your experience now.' }])
+      setChatPhase('generating')
+      generate(answers, briefInput.trim() || undefined)
+    }, 600)
+  }, [answers, briefInput, generate, loading, presetReady])
+
   /* ── JUST BUILD IT (UPGRADE 1) ── */
   const handleJustBuildIt = useCallback(() => {
     const brief = briefInput.trim()
@@ -770,13 +955,15 @@ export default function DashboardPage() {
     setIsTyping(false)
     setError(null)
     setChatPhase('generating')
-    generate(undefined, undefined, brief)
+    setPresetReady(false)
+    generate(undefined, brief)
   }, [briefInput, generate])
 
   /* ── SUBMIT ANSWER ── */
   const submitAnswer = useCallback((value?: string) => {
     const answer = (value ?? inputValue).trim()
     if (!answer && currentStep !== 4) return
+    setPresetReady(false)
 
     const displayAnswer = answer || 'skip'
     setInputValue('')
@@ -807,26 +994,39 @@ export default function DashboardPage() {
 
   /* ── SUBMIT FEEDBACK ── */
   const submitFeedback = useCallback(() => {
-    const feedback = inputValue.trim()
-    if (!feedback) return
+    const draftDirective = inputValue.trim()
+    const directive = draftDirective || revisionDirective.trim()
+    if (!directive) return
     setInputValue('')
-    setMessages(prev => [...prev, { role: 'user', text: feedback }])
+    setRevisionDirective(directive)
+    setMessages(prev => [...prev, { role: 'user', text: directive }])
+    setPresetReady(false)
 
     setIsTyping(true)
     setTimeout(() => {
       setIsTyping(false)
-      setMessages(prev => [...prev, { role: 'ai', text: "Rebuilding around your feedback\u2026" }])
+      setMessages(prev => [...prev, { role: 'ai', text: "Rebuilding around your direction…" }])
       setChatPhase('generating')
       setHtml(null)
       setMetadata(null)
       setBlueprint(null)
       setCritique(null)
       setDecisions([])
-      generate(answers.length > 0 ? answers : undefined, feedback, briefInput.trim() || undefined)
+      generate(
+        answers.length > 0 ? answers : undefined,
+        briefInput.trim() || undefined,
+      )
     }, 600)
-  }, [inputValue, answers, generate, briefInput])
+  }, [answers, generate, briefInput, inputValue, revisionDirective])
 
   /* ── HANDLE SEND ── */
+  const handleChatInputChange = useCallback((value: string) => {
+    setInputValue(value)
+    if (chatPhase === 'feedback') {
+      setRevisionDirective(value)
+    }
+  }, [chatPhase])
+
   const handleSend = useCallback(() => {
     if (chatPhase === 'feedback') {
       submitFeedback()
@@ -846,38 +1046,24 @@ export default function DashboardPage() {
     setBackground(p.colors.background)
     setChatExpanded(true)
 
-    setMessages([])
-    setAnswers([])
-    setCurrentStep(0)
+    setRevisionDirective('')
+    const conversation: ChatMessage[] = CHAT_QUESTIONS.flatMap((question, idx) => ([
+      { role: 'ai' as const, text: question.question },
+      { role: 'user' as const, text: p.answers[idx] || 'skip' },
+    ]))
+    setMessages([
+      ...conversation,
+      { role: 'ai', text: 'Answers prefilled — tap Generate from preset when you are ready.' },
+    ])
+    setAnswers(p.answers)
+    setCurrentStep(CHAT_QUESTIONS.length)
+    setInputValue('')
     setError(null)
     setChatPhase('conversation')
-
-    let delay = 0
-    for (let i = 0; i < CHAT_QUESTIONS.length; i++) {
-      const qDelay = delay
-      const aDelay = delay + 150
-      setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'ai', text: CHAT_QUESTIONS[i].question }])
-      }, qDelay)
-      setTimeout(() => {
-        setMessages(prev => [...prev, { role: 'user', text: p.answers[i] }])
-      }, aDelay)
-      delay += 300
-    }
-
-    setTimeout(() => {
-      setAnswers(p.answers)
-      setCurrentStep(CHAT_QUESTIONS.length)
-      setIsTyping(true)
-    }, delay)
-
-    setTimeout(() => {
-      setIsTyping(false)
-      setMessages(prev => [...prev, { role: 'ai', text: 'Got it. Building your experience now.' }])
-      setChatPhase('generating')
-      generate(p.answers)
-    }, delay + 600)
-  }, [generate])
+    setIsTyping(false)
+    setPresetReady(true)
+    briefInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [])
 
   /* ── START OVER ── */
   const startOver = useCallback(() => {
@@ -898,6 +1084,7 @@ export default function DashboardPage() {
     setViewportMode('desktop')
     setDecisions([])
     setVisibleDecisions(0)
+    setPresetReady(false)
   }, [])
 
   const toggleReferenceStyle = useCallback((style: ReferenceStyleOption) => {
@@ -941,7 +1128,29 @@ export default function DashboardPage() {
   }, [previousGeneration, writeIframeDocument])
   const changeSummary = summarizeChange(previousGeneration, blueprint, critique)
   const mobileImpactScore = critique?.scores.find(score => score.label === 'Mobile Impact')?.score
+  const knownAgentNames = new Set<string>(AGENT_ROSTER.map(agent => agent.name))
+  const additionalAgentEntries = Object.entries(agentStatus).filter(([name]) => !knownAgentNames.has(name))
+  const agentRows = [
+    ...AGENT_ROSTER.map(agent => ({
+      key: agent.name,
+      label: agent.label,
+      description: agent.description,
+      state: agentStatus[agent.name] || 'waiting',
+    })),
+    ...additionalAgentEntries.map(([name, state]) => ({
+      key: name,
+      label: name,
+      description: 'Additional agent',
+      state,
+    })),
+  ]
+  const blueprintStoryArc = blueprint?.storyArc ?? []
+  const blueprintSections = blueprint?.sections ?? []
+  const blueprintSupportingDirections = blueprint?.designSystem?.supportingDirections ?? []
+  const critiqueScores = critique?.scores ?? []
+  const critiqueRecommendations = critique?.recommendations ?? []
 
+  const chatInputValue = chatPhase === 'feedback' ? revisionDirective : inputValue
   const showInput = chatPhase === 'conversation' || chatPhase === 'feedback'
 
   return (
@@ -983,6 +1192,16 @@ export default function DashboardPage() {
                     onClick={() => applyPreset(p)}>{p.label}</button>
                 ))}
               </div>
+              {presetReady && (
+                <button
+                  type="button"
+                  className="db-preset-action"
+                  onClick={handleGenerateFromPreset}
+                  disabled={loading}
+                >
+                  Generate from preset
+                </button>
+              )}
             </div>
 
             {/* ── JUST BUILD IT (UPGRADE 1) ── */}
@@ -1067,8 +1286,8 @@ export default function DashboardPage() {
                       ref={inputRef}
                       type="text"
                       className="chat-input"
-                      value={inputValue}
-                      onChange={e => setInputValue(e.target.value)}
+                      value={chatInputValue}
+                      onChange={e => handleChatInputChange(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') handleSend() }}
                       placeholder={
                         chatPhase === 'feedback'
@@ -1277,19 +1496,14 @@ export default function DashboardPage() {
                 <p className="db-agent-panel-kicker">Creative team at work</p>
                 <p className="db-agent-panel-title">{LOADING_MESSAGES[loadingMsgIdx]}</p>
                 <ul className="db-agent-list">
-                  {AGENT_ROSTER.map(agent => {
-                    const state = agentStatus[agent.name] || 'waiting'
-                    return (
-                      <li key={agent.name} className={`db-agent-row db-agent-row--${state}`}>
-                        <span className={`db-agent-dot db-agent-dot--${state}`} aria-hidden="true">
-                          {state === 'done' ? '\u2713' : state === 'failed' ? '\u2715' : ''}
-                        </span>
-                        <span className="db-agent-label">{agent.label}</span>
-                        <span className="db-agent-desc">{agent.description}</span>
-                        <span className={`db-agent-state db-agent-state--${state}`}>{stateLabel(state)}</span>
-                      </li>
-                    )
-                  })}
+                  {agentRows.map(row => (
+                    <AgentStatusRow
+                      key={row.key}
+                      label={row.label}
+                      description={row.description}
+                      state={row.state}
+                    />
+                  ))}
                 </ul>
               </div>
             </div>
@@ -1300,7 +1514,7 @@ export default function DashboardPage() {
               <div className="db-stage-top">
                 <div className="db-stage-copy">
                   <p className="db-stage-kicker">Live Direction Stage</p>
-                  <h2 className="db-stage-title">{blueprint?.brandCore.brandName || answers[0] || 'Creative Output'}</h2>
+                  <h2 className="db-stage-title">{blueprint?.brandCore?.brandName || answers[0] || 'Creative Output'}</h2>
                   <p className="db-stage-sub">
                     {critique?.summary || 'Shape the page, push the emotion, and judge the result like a real creative director.'}
                   </p>
@@ -1308,11 +1522,11 @@ export default function DashboardPage() {
                 <div className="db-stage-stats">
                   <div className="db-stage-stat">
                     <span className="db-stage-stat-label">Direction</span>
-                    <span className="db-stage-stat-value">{blueprint?.designSystem.primaryDirection || designDirection}</span>
+                    <span className="db-stage-stat-value">{blueprint?.designSystem?.primaryDirection || designDirection}</span>
                   </div>
                   <div className="db-stage-stat">
                     <span className="db-stage-stat-label">Motion</span>
-                    <span className="db-stage-stat-value">{blueprint?.motionSystem.intensity || 'editorial'}</span>
+                    <span className="db-stage-stat-value">{blueprint?.motionSystem?.intensity || 'editorial'}</span>
                   </div>
                   <div className="db-stage-stat">
                     <span className="db-stage-stat-label">Mobile</span>
@@ -1458,15 +1672,15 @@ export default function DashboardPage() {
             <div className="db-blueprint">
               <div className="db-blueprint-block">
                 <span className="db-log-label">Brand Core</span>
-                <span className="db-log-value">{blueprint.brandCore.brandName}</span>
-                <span className="db-log-reason">{blueprint.brandCore.emotionalPromise}</span>
-                <span className="db-log-reason">Voice: {blueprint.brandCore.brandVoice}</span>
-                <span className="db-log-reason">Audience: {blueprint.brandCore.audienceLens}</span>
+                <span className="db-log-value">{blueprint?.brandCore?.brandName ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.brandCore?.emotionalPromise ?? '—'}</span>
+                <span className="db-log-reason">Voice: {blueprint?.brandCore?.brandVoice ?? '—'}</span>
+                <span className="db-log-reason">Audience: {blueprint?.brandCore?.audienceLens ?? '—'}</span>
               </div>
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Story Arc</span>
-                {blueprint.storyArc.map(step => (
+                {blueprintStoryArc.map(step => (
                   <div key={step.stage} className="db-blueprint-step">
                     <span className="db-blueprint-step-title">{step.stage}</span>
                     <span className="db-log-value">{step.objective}</span>
@@ -1477,37 +1691,37 @@ export default function DashboardPage() {
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Design System</span>
-                <span className="db-log-value">{blueprint.designSystem.primaryDirection}</span>
-                <span className="db-log-reason">Supporting: {blueprint.designSystem.supportingDirections.join(', ') || 'None'}</span>
-                <span className="db-log-reason">{blueprint.designSystem.typographyStrategy}</span>
-                <span className="db-log-reason">{blueprint.designSystem.paletteStrategy}</span>
-                <span className="db-log-reason">{blueprint.designSystem.layoutRhythm}</span>
+                <span className="db-log-value">{blueprint?.designSystem?.primaryDirection ?? '—'}</span>
+                <span className="db-log-reason">Supporting: {blueprintSupportingDirections.join(', ') || 'None'}</span>
+                <span className="db-log-reason">{blueprint?.designSystem?.typographyStrategy ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.designSystem?.paletteStrategy ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.designSystem?.layoutRhythm ?? '—'}</span>
               </div>
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Motion System</span>
-                <span className="db-log-value">{blueprint.motionSystem.intensity}</span>
-                <span className="db-log-reason">{blueprint.motionSystem.style}</span>
-                <span className="db-log-reason">{blueprint.motionSystem.revealBehavior}</span>
-                <span className="db-log-reason">{blueprint.motionSystem.atmosphere}</span>
+                <span className="db-log-value">{blueprint?.motionSystem?.intensity ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.motionSystem?.style ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.motionSystem?.revealBehavior ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.motionSystem?.atmosphere ?? '—'}</span>
               </div>
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Persuasion System</span>
-                <span className="db-log-reason">{blueprint.persuasionSystem.trustStrategy}</span>
-                <span className="db-log-reason">Proof: {blueprint.persuasionSystem.proofPlacement}</span>
-                <span className="db-log-reason">CTA: {blueprint.persuasionSystem.ctaStrategy}</span>
-                <span className="db-log-reason">{blueprint.persuasionSystem.specificityNotes}</span>
+                <span className="db-log-reason">{blueprint?.persuasionSystem?.trustStrategy ?? '—'}</span>
+                <span className="db-log-reason">Proof: {blueprint?.persuasionSystem?.proofPlacement ?? '—'}</span>
+                <span className="db-log-reason">CTA: {blueprint?.persuasionSystem?.ctaStrategy ?? '—'}</span>
+                <span className="db-log-reason">{blueprint?.persuasionSystem?.specificityNotes ?? '—'}</span>
               </div>
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Section Plan</span>
-                {blueprint.sections.map(section => (
+                {blueprintSections.map(section => (
                   <div key={section.id} className="db-blueprint-step">
-                    <span className="db-blueprint-step-title">{section.heading}</span>
-                    <span className="db-log-value">{section.role}</span>
-                    <span className="db-log-reason">{section.purpose}</span>
-                    <span className="db-log-reason">{section.contentDirection}</span>
+                    <span className="db-blueprint-step-title">{section.heading || '—'}</span>
+                    <span className="db-log-value">{section.role || '—'}</span>
+                    <span className="db-log-reason">{section.purpose || '—'}</span>
+                    <span className="db-log-reason">{section.contentDirection || '—'}</span>
                   </div>
                 ))}
               </div>
@@ -1524,7 +1738,7 @@ export default function DashboardPage() {
 
               <div className="db-blueprint-block">
                 <span className="db-log-label">Scores</span>
-                {critique.scores.map(score => (
+                {critiqueScores.map(score => (
                   <div key={score.label} className="db-score-row">
                     <span className="db-score-label">{score.label}</span>
                     <span className="db-score-value">{score.score}</span>
@@ -1532,10 +1746,10 @@ export default function DashboardPage() {
                 ))}
               </div>
 
-              {critique.recommendations.length > 0 && (
+              {critiqueRecommendations.length > 0 && (
                 <div className="db-blueprint-block">
                   <span className="db-log-label">Recommendations</span>
-                  {critique.recommendations.map(rec => (
+                  {critiqueRecommendations.map(rec => (
                     <span key={rec} className="db-log-reason">{rec}</span>
                   ))}
                 </div>
@@ -1678,6 +1892,8 @@ const dashboardCSS = `
   .db-presets-row{display:flex;gap:6px;flex-wrap:wrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .db-preset-pill{padding:7px 14px;border:1px solid var(--gold);border-radius:100px;background:transparent;color:var(--gold);font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:500;letter-spacing:0.03em;cursor:pointer;transition:all 0.2s;white-space:nowrap;min-height:44px;display:flex;align-items:center}
   .db-preset-pill:hover{background:var(--gold-dim);color:var(--text)}
+  .db-preset-action{margin-top:8px;padding:10px 16px;border:1px solid var(--border);border-radius:999px;background:var(--gold);color:var(--black);font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;transition:filter 0.2s}
+  .db-preset-action:disabled{opacity:0.5;cursor:not-allowed}
 
   /* ── JUST BUILD IT (UPGRADE 1) ── */
   .jbi{display:flex;flex-direction:column;gap:8px;margin-bottom:4px}
@@ -1771,6 +1987,10 @@ const dashboardCSS = `
 
   .db-gen-count{text-align:center;font-size:11px;color:var(--muted);margin-top:16px}
   .db-error{text-align:center;font-size:12px;color:#e55;margin-top:8px}
+  .db-error-boundary{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:250}
+  .db-error-boundary-panel{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:32px;max-width:420px;display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,0.45)}
+  .db-error-boundary-kicker{font-size:22px;font-family:'Playfair Display',Georgia,serif;font-weight:700;letter-spacing:0.04em;color:var(--text)}
+  .db-error-boundary-copy{font-size:14px;color:rgba(242,237,228,0.78)}
 
   /* ── CENTER: PREVIEW ── */
   .db-preview{background:var(--black);position:relative;display:flex;flex-direction:column}
@@ -1819,6 +2039,7 @@ const dashboardCSS = `
   .db-agent-state--working{color:var(--gold)}
   .db-agent-state--done{color:#6EE7A6}
   .db-agent-state--failed{color:#E66A6A}
+  .db-agent-recovery{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:#E66A6A;margin-top:4px;margin-left:18px;display:block}
 
   .db-preview-actions{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;flex-wrap:wrap}
   .db-action-btn{padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;transition:border-color 0.2s,color 0.2s;min-height:44px}
@@ -1849,7 +2070,6 @@ const dashboardCSS = `
   .db-device-note p{font-size:12px;line-height:1.6;color:rgba(242,237,228,0.66)}
   .db-iframe{flex:1;width:100%;border:none;background:white}
 
-  /* ── VIEWPORT TOGGLE (Mobile | Desktop) ── */
   .db-viewport-toggle{display:inline-flex;gap:4px;align-items:center}
 
   /* ── RIGHT: CREATIVE DECISIONS ── */
@@ -1946,3 +2166,11 @@ const dashboardCSS = `
   .db-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 `
+
+export default function DashboardPage() {
+  return (
+    <ErrorBoundary>
+      <DashboardPageContent />
+    </ErrorBoundary>
+  )
+}

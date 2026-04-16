@@ -27,13 +27,15 @@ import type {
   LegacyBlueprint,
 } from './types'
 import { VISIBLE_AGENTS } from './types'
+import { TOTAL_BUDGET_MS } from './config'
+import { logError, logWarn } from '@/lib/logging'
 
 /**
  * The orchestrator runs agents in staged parallelism:
  *
  *   Stage 1 (sequential): Creative Director
- *   Stage 2 (parallel):    Brand Voice | Psychology Director | Art Director
- *   Stage 3 (parallel):    Motion Director | Mobile Director
+ *   Stage 2 (parallel):    Brand Voice | Psychology Director | Art Director | Mobile Director
+ *   Stage 3 (parallel):    Motion Director
  *   Stage 4 (sequential):  Assembler
  *   Stage 5 (sequential):  Critic
  *
@@ -57,8 +59,6 @@ export interface OrchestratorResult {
   payload: CompletePayload
 }
 
-const TOTAL_BUDGET_MS = 55000 // Vercel wall is 60s — stop 5s early so we always emit `complete`.
-
 export async function runOrchestrator(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { requestId, brief, onEvent } = input
   const startedAt = Date.now()
@@ -73,63 +73,63 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<Orchest
   emit(onEvent, requestId, 'creative-director', 'working')
   let creativeDirection
   try {
-    creativeDirection = await runCreativeDirector(brief)
+    creativeDirection = await runCreativeDirector(brief, requestId)
     emit(onEvent, requestId, 'creative-director', 'done')
   } catch (err) {
-    console.error('[orchestrator] creative-director threw:', err)
+    logAgentError('creative-director', requestId, err)
     creativeDirection = creativeDirectionFallback(brief)
     emit(onEvent, requestId, 'creative-director', 'failed')
   }
 
-  // ── Stage 2: Brand Voice | Psychology | Art Direction (parallel) ──
+  // ── Stage 2: Brand Voice | Psychology | Art Direction | Mobile Director (parallel) ──
   emit(onEvent, requestId, 'brand-voice', 'working')
   emit(onEvent, requestId, 'psychology-director', 'working')
   emit(onEvent, requestId, 'art-director', 'working')
+  emit(onEvent, requestId, 'mobile-director', 'working')
 
-  const [brandVoice, psychologyPlan, artDirection] = await Promise.all([
-    runBrandVoice(brief, creativeDirection)
+  const [brandVoice, psychologyPlan, artDirection, mobilePlan] = await Promise.all([
+    runBrandVoice(brief, creativeDirection, requestId)
       .then(v => { emit(onEvent, requestId, 'brand-voice', 'done'); return v })
       .catch(err => {
-        console.error('[orchestrator] brand-voice threw:', err)
+        logAgentError('brand-voice', requestId, err)
         emit(onEvent, requestId, 'brand-voice', 'failed')
         return brandVoiceFallback(brief)
       }),
-    runPsychologyDirector(brief, creativeDirection)
+    runPsychologyDirector(brief, creativeDirection, requestId)
       .then(v => { emit(onEvent, requestId, 'psychology-director', 'done'); return v })
       .catch(err => {
-        console.error('[orchestrator] psychology-director threw:', err)
+        logAgentError('psychology-director', requestId, err)
         emit(onEvent, requestId, 'psychology-director', 'failed')
         return psychologyPlanFallback(brief)
       }),
-    runArtDirector(brief, creativeDirection)
+    runArtDirector(brief, creativeDirection, requestId)
       .then(v => { emit(onEvent, requestId, 'art-director', 'done'); return v })
       .catch(err => {
-        console.error('[orchestrator] art-director threw:', err)
+        logAgentError('art-director', requestId, err)
         emit(onEvent, requestId, 'art-director', 'failed')
         return artDirectionFallback(brief)
       }),
-  ])
-
-  // ── Stage 3: Motion Director | Mobile Director (parallel) ──
-  emit(onEvent, requestId, 'motion-director', 'working')
-  emit(onEvent, requestId, 'mobile-director', 'working')
-
-  const [motionPlan, mobilePlan] = await Promise.all([
-    runMotionDirector(brief, creativeDirection, artDirection)
-      .then(v => { emit(onEvent, requestId, 'motion-director', 'done'); return v })
-      .catch(err => {
-        console.error('[orchestrator] motion-director threw:', err)
-        emit(onEvent, requestId, 'motion-director', 'failed')
-        return motionPlanFallback(brief)
-      }),
-    runMobileDirector(brief, creativeDirection)
+    runMobileDirector(brief, creativeDirection, requestId)
       .then(v => { emit(onEvent, requestId, 'mobile-director', 'done'); return v })
       .catch(err => {
-        console.error('[orchestrator] mobile-director threw:', err)
+        logAgentError('mobile-director', requestId, err)
         emit(onEvent, requestId, 'mobile-director', 'failed')
         return mobilePlanFallback(brief)
       }),
   ])
+
+  // ── Stage 3: Motion Director (solo) ──
+  emit(onEvent, requestId, 'motion-director', 'working')
+
+  let motionPlan
+  try {
+    motionPlan = await runMotionDirector(brief, creativeDirection, artDirection, requestId)
+    emit(onEvent, requestId, 'motion-director', 'done')
+  } catch (err) {
+    logAgentError('motion-director', requestId, err)
+    motionPlan = motionPlanFallback(brief)
+    emit(onEvent, requestId, 'motion-director', 'failed')
+  }
 
   const agentOutputs: AgentOutputs = {
     creativeDirection,
@@ -144,10 +144,10 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<Orchest
   emit(onEvent, requestId, 'assembler', 'working')
   let html: string
   try {
-    html = await runAssembler(brief, agentOutputs)
+    html = await runAssembler(brief, agentOutputs, requestId)
     emit(onEvent, requestId, 'assembler', 'done')
   } catch (err) {
-    console.error('[orchestrator] assembler threw:', err)
+    logAgentError('assembler', requestId, err)
     // runAssembler already has an internal fallback, but guard anyway
     html = '<!DOCTYPE html><html><body><h1>Something went wrong.</h1></body></html>'
     emit(onEvent, requestId, 'assembler', 'failed')
@@ -164,15 +164,15 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<Orchest
   const remaining = budgetLeft()
   if (remaining < 6000) {
     emit(onEvent, requestId, 'critic', 'failed')
-    console.warn(`[orchestrator] skipping critic — only ${remaining}ms budget left`)
+    logWarn('orchestrator skipping critic — budget remaining too low', { requestId, remaining })
     critic = criticFallback()
   } else {
     emit(onEvent, requestId, 'critic', 'working')
     try {
-      critic = await runCritic(html, agentOutputs)
+      critic = await runCritic(html, agentOutputs, requestId)
       emit(onEvent, requestId, 'critic', 'done')
     } catch (err) {
-      console.error('[orchestrator] critic threw:', err)
+      logAgentError('critic', requestId, err)
       critic = criticFallback()
       emit(onEvent, requestId, 'critic', 'failed')
     }
@@ -256,6 +256,21 @@ export function buildCreativeDecisions(agents: AgentOutputs): AgentCreativeDecis
       agent: 'Creative Director',
     },
   ]
+}
+
+function normalizeError(err: unknown) {
+  if (err instanceof Error) {
+    return { errorMessage: err.message, errorStack: err.stack }
+  }
+  return { errorMessage: typeof err === 'string' ? err : String(err) }
+}
+
+function logAgentError(agent: AgentName, requestId: string, err: unknown) {
+  logError(`orchestrator agent failure: ${agent}`, {
+    requestId,
+    agent,
+    ...normalizeError(err),
+  })
 }
 
 function mapCriticToLegacyShape(c: ReturnType<typeof criticFallback>) {

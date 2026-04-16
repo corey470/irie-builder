@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { psychologyPlanFallback } from './fallbacks'
 import { loadReferenceDocs } from './md-loader'
 import type { BriefInput, CreativeDirection, PsychologyPlan } from './types'
@@ -44,7 +45,11 @@ Rules for emotionSequence:
 - Each treatment is a single specific sentence describing what that stage looks like on THIS page.`
 }
 
-export async function runPsychologyDirector(brief: BriefInput, direction: CreativeDirection): Promise<PsychologyPlan> {
+export async function runPsychologyDirector(
+  brief: BriefInput,
+  direction: CreativeDirection,
+  requestId: string,
+): Promise<PsychologyPlan> {
   const user = `Creative thesis: ${direction.overallDirection}
 Emotional target: ${direction.emotionalTarget}
 Section order: ${direction.sectionOrder.join(' -> ')}
@@ -60,12 +65,13 @@ ${brief.userFeedback ? `User feedback: ${brief.userFeedback}` : ''}
 Design the emotional sequence, decide where trust goes, where the CTA should land, and what friction to remove.`
 
   const out = await callJsonAgent<PsychologyPlan>({
-    model: MODELS.haiku,
+    model: AGENT_CONFIG.psychologyDirector.model,
     system: buildSystem(),
     user,
-    maxTokens: 700,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.psychologyDirector.maxTokens,
+    timeoutMs: AGENT_CONFIG.psychologyDirector.timeoutMs,
     label: 'psychology-director',
+    requestId,
   })
   if (!out || !Array.isArray(out.emotionSequence) || out.emotionSequence.length < 3) {
     return psychologyPlanFallback(brief)

@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { mobilePlanFallback } from './fallbacks'
 import { getDesignMobileAndPsychology } from './md-loader'
 import type { BriefInput, CreativeDirection, MobilePlan } from './types'
@@ -37,7 +38,11 @@ Schema:
 }`
 }
 
-export async function runMobileDirector(brief: BriefInput, direction: CreativeDirection): Promise<MobilePlan> {
+export async function runMobileDirector(
+  brief: BriefInput,
+  direction: CreativeDirection,
+  requestId: string,
+): Promise<MobilePlan> {
   const user = `Creative thesis: ${direction.overallDirection}
 Emotional target: ${direction.emotionalTarget}
 
@@ -49,12 +54,13 @@ ${brief.audience ? `Audience: ${brief.audience}` : ''}
 Decide: what the first mobile viewport must contain, which desktop details to simplify, how to handle the thumb zone, and what motion rules apply to the mobile pass.`
 
   const out = await callJsonAgent<MobilePlan>({
-    model: MODELS.haiku,
+    model: AGENT_CONFIG.mobileDirector.model,
     system: buildSystem(),
     user,
-    maxTokens: 500,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.mobileDirector.maxTokens,
+    timeoutMs: AGENT_CONFIG.mobileDirector.timeoutMs,
     label: 'mobile-director',
+    requestId,
   })
   if (!out || !out.firstViewportStrategy) return mobilePlanFallback(brief)
   if (!Array.isArray(out.mobileSimplifications)) out.mobileSimplifications = []

@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { artDirectionFallback } from './fallbacks'
 import { loadReferenceDocs } from './md-loader'
 import type { BriefInput, CreativeDirection, ArtDirection } from './types'
@@ -12,6 +13,8 @@ import type { BriefInput, CreativeDirection, ArtDirection } from './types'
 
 function buildSystem(): string {
   const { design, designDirections } = loadReferenceDocs()
+  const designExcerpt = buildArtDesignBrief(design)
+  const directionExcerpt = buildDirectionBrief(designDirections)
   return `You are the Art Director for Irie Builder.
 
 Your job: translate the brief, the creative thesis, and the chosen reference styles into ORIGINAL visual decisions. Never clone — translate.
@@ -24,11 +27,11 @@ Rules:
 - Atmosphere: describe the depth system (orbs, grain, gradients, texture) in one sentence.
 - If DESIGN.md (below) specifies specific tokens (near-black canvas, gold accent, Playfair + Syne), honor them unless the user's explicit palette overrides.
 
-Design reference (authoritative):
-${design}
+Design reference (palette + typography slices):
+${designExcerpt || 'Palette and typography guidance unavailable.'}
 
-Reference style library:
-${designDirections}
+Reference style library (core references):
+${directionExcerpt || 'Core references guidance unavailable.'}
 
 Output ONLY valid JSON. No markdown. No explanation.
 
@@ -54,7 +57,11 @@ Schema:
 }`
 }
 
-export async function runArtDirector(brief: BriefInput, direction: CreativeDirection): Promise<ArtDirection> {
+export async function runArtDirector(
+  brief: BriefInput,
+  direction: CreativeDirection,
+  requestId: string,
+): Promise<ArtDirection> {
   const user = `Creative thesis: ${direction.overallDirection}
 Emotional target: ${direction.emotionalTarget}
 Energy level: ${direction.energyLevel}
@@ -76,13 +83,38 @@ User-supplied palette (use unless it clashes with the vision):
 Decide the visual language for this page.`
 
   const out = await callJsonAgent<ArtDirection>({
-    model: MODELS.sonnet,
+    model: AGENT_CONFIG.artDirector.model,
     system: buildSystem(),
     user,
-    maxTokens: 800,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.artDirector.maxTokens,
+    timeoutMs: AGENT_CONFIG.artDirector.timeoutMs,
     label: 'art-director',
+    requestId,
   })
   if (!out || !out.typographySystem || !out.colorPalette) return artDirectionFallback(brief)
   return out
+}
+
+function buildArtDesignBrief(design: string): string {
+  const palette = extractSection(design, '## 2. Color Palette & Roles')
+  const typography = extractSection(design, '## 3. Typography Rules')
+  return [palette, typography].filter(Boolean).join('\\n\\n')
+}
+
+function buildDirectionBrief(directions: string): string {
+  if (!directions) return ''
+  const start = directions.indexOf('## Core References')
+  if (start === -1) return directions.slice(0, 1800).trim()
+  const endMarker = '## How Irie Builder Should Use Them'
+  const end = directions.indexOf(endMarker, start + 1)
+  return directions.slice(start, end === -1 ? directions.length : end).trim()
+}
+
+function extractSection(doc: string, heading: string): string {
+  if (!doc) return ''
+  const start = doc.indexOf(heading)
+  if (start === -1) return ''
+  const nextHeading = doc.indexOf('\\n## ', start + heading.length)
+  const end = nextHeading === -1 ? doc.length : nextHeading
+  return doc.slice(start, end).trim()
 }

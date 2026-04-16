@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { motionPlanFallback } from './fallbacks'
 import { getDesignMotionBrief } from './md-loader'
 import type { BriefInput, CreativeDirection, ArtDirection, MotionPlan } from './types'
@@ -41,6 +42,7 @@ export async function runMotionDirector(
   brief: BriefInput,
   direction: CreativeDirection,
   art: ArtDirection,
+  requestId: string,
 ): Promise<MotionPlan> {
   const user = `Creative thesis: ${direction.overallDirection}
 Energy level: ${direction.energyLevel}
@@ -55,12 +57,13 @@ ${brief.emotionalControls ? `Tension:${brief.emotionalControls.tension} Spectacl
 Decide the motion personality for this page — intensity, reveals, transitions, scroll rhythm, ambient atmosphere.`
 
   const out = await callJsonAgent<MotionPlan>({
-    model: MODELS.haiku,
+    model: AGENT_CONFIG.motionDirector.model,
     system: buildSystem(),
     user,
-    maxTokens: 500,
-    timeoutMs: 15000,
+    maxTokens: AGENT_CONFIG.motionDirector.maxTokens,
+    timeoutMs: AGENT_CONFIG.motionDirector.timeoutMs,
     label: 'motion-director',
+    requestId,
   })
   if (!out || !out.motionIntensity) return motionPlanFallback(brief)
   return out

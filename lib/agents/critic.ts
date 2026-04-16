@@ -1,4 +1,5 @@
-import { callJsonAgent, MODELS } from './anthropic'
+import { callJsonAgent } from './anthropic'
+import { AGENT_CONFIG } from './config'
 import { criticFallback } from './fallbacks'
 import type { AgentOutputs, CriticOutput } from './types'
 
@@ -39,7 +40,7 @@ Schema:
 
 Scores must be integers 1-10. Recommendations must be specific and actionable (never "improve further").`
 
-export async function runCritic(html: string, agents: AgentOutputs): Promise<CriticOutput> {
+export async function runCritic(html: string, agents: AgentOutputs, requestId: string): Promise<CriticOutput> {
   // Feed a trimmed HTML + agent plan so the Critic has context without
   // blowing past token limits.
   const htmlSample = sampleHtml(html)
@@ -56,12 +57,13 @@ ${htmlSample}
 Score this honestly. If anything is generic, say so in the recommendations.`
 
   const out = await callJsonAgent<CriticOutput>({
-    model: MODELS.haiku,
+    model: AGENT_CONFIG.critic.model,
     system: SYSTEM,
     user,
-    maxTokens: 500,
-    timeoutMs: 8000,
+    maxTokens: AGENT_CONFIG.critic.maxTokens,
+    timeoutMs: AGENT_CONFIG.critic.timeoutMs,
     label: 'critic',
+    requestId,
   })
   if (!out || !out.scores) return criticFallback()
   // Clamp scores to 1-10
