@@ -43,7 +43,15 @@ export function attachSupabaseSync(
   projectId: string,
 ): () => void {
   let briefTimer: ReturnType<typeof setTimeout> | null = null
-  let lastSyncedGenAt: string | null = null
+  // Seed the dedup guard from whatever hydrate just wrote into localStorage so
+  // that the first edit (which preserves createdAt) doesn't trigger a duplicate
+  // INSERT of the generation that Supabase already has.
+  let lastSyncedGenAt: string | null =
+    typeof window === 'undefined'
+      ? null
+      : safeParseJSON<GenerationSnapshot>(
+          window.localStorage.getItem(LAST_GENERATION_KEY),
+        )?.createdAt ?? null
 
   async function pushBrief() {
     if (typeof window === 'undefined') return
