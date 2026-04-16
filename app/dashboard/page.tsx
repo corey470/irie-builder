@@ -759,45 +759,18 @@ export default function DashboardPage() {
     const brief = briefInput.trim()
     if (!brief) return
 
-    const score = analyzeIntent(brief)
-
-    // Expand chat, show brief as user message, show "Got it"
-    setChatExpanded(true)
-    setMessages([
-      { role: 'user', text: brief },
-    ])
+    // Path 1 — Build It: skip the conversation entirely and fire the
+    // agent pipeline immediately with the current brief + selected
+    // options. The conversation path lives in the "or have a conversation"
+    // link below and is untouched.
+    setChatExpanded(false)
+    setMessages([])
     setAnswers([])
     setCurrentStep(0)
+    setIsTyping(false)
     setError(null)
-
-    if (score >= 3) {
-      // High intent — skip questionnaire entirely
-      setIsTyping(true)
-      setTimeout(() => {
-        setIsTyping(false)
-        setMessages(prev => [...prev, { role: 'ai', text: 'Got it. Building your experience now.' }])
-        setChatPhase('generating')
-        generate(undefined, undefined, brief)
-      }, 600)
-    } else {
-      // Low intent — start questionnaire
-      setIsTyping(true)
-      setTimeout(() => {
-        setIsTyping(false)
-        setMessages(prev => [...prev, {
-          role: 'ai',
-          text: "I want to get this right. Let me ask you a few quick things.",
-        }])
-        setTimeout(() => {
-          setIsTyping(true)
-          setTimeout(() => {
-            setIsTyping(false)
-            setMessages(prev => [...prev, { role: 'ai', text: CHAT_QUESTIONS[0].question }])
-            setChatPhase('conversation')
-          }, 400)
-        }, 600)
-      }, 600)
-    }
+    setChatPhase('generating')
+    generate(undefined, undefined, brief)
   }, [briefInput, generate])
 
   /* ── SUBMIT ANSWER ── */
