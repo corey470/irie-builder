@@ -35,6 +35,15 @@ HARD RULES:
 10. Every image uses a real URL from the prompt. Never empty src.
 11. Every section has real content. No placeholders.
 12. Proof section lands directly before the final CTA section.
+13. Exactly ONE <p class="eyebrow"> line in the hero section. Never duplicate it.
+14. Never emit placeholder text like "Your Brand", "Your Name", "Your Restaurant", or "Your Event". Use the actual brand name from the brief. If none is supplied, derive a short one from the vision prompt.
+
+DESKTOP LAYOUT (required):
+- All content containers use max-width: 1200px; margin: 0 auto; with padding: 0 clamp(1rem, 5vw, 3rem).
+- Hero: min-height: 100vh; full-bleed background-image with a dark overlay for contrast. Content sits inside a centered .wrap so it never stretches edge-to-edge on desktop.
+- Hero headline: font-size: clamp(3rem, 5vw, 7rem).
+- Eyebrow: font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase.
+- Desktop breakpoint: @media (min-width: 1024px). Never stack unrelated elements side by side that belong on separate lines.
 
 Top of HTML: include a comment block:
 <!-- CREATIVE DECISIONS
@@ -59,11 +68,6 @@ export async function runAssembler(
   // Sonnet for the same token budget, which keeps us inside the 60s Vercel
   // wall after the upstream agents have already spent ~20-25s. Creativity
   // lives upstream; this role is just wiring decisions into HTML.
-  // After 24-26s of upstream agent work we have ~28s before the Vercel
-  // 60s wall. Haiku with a large prompt (all 6 agent outputs) runs at
-  // ~150 tok/s in practice, so 3500 tokens ≈ 23s — finishes cleanly
-  // inside the budget. Leaner HTML, but the visual system is carried by
-  // the injected irie-motion-system CSS/JS, not agent-generated tokens.
   const html = await callTextAgent({
     model: MODELS.haiku,
     system: buildSystem(),
@@ -72,8 +76,9 @@ export async function runAssembler(
     timeoutMs: 27000,
     label: 'assembler',
   })
+  const resolvedBrand = resolveBrandName(brief)
   if (!html || html.length < 200) {
-    return buildFallbackHtml(brief, agents)
+    return sanitizePlaceholders(buildFallbackHtml(brief, agents), resolvedBrand)
   }
   const cleaned = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
   // Reject truncated output — if Haiku ran out of tokens mid-generation we
@@ -81,9 +86,14 @@ export async function runAssembler(
   // a broken page missing its content section.
   if (!cleaned.includes('<body') || !/<\/html>\s*$/.test(cleaned)) {
     console.warn('[assembler] output looked truncated, using fallback')
-    return buildFallbackHtml(brief, agents)
+    return sanitizePlaceholders(buildFallbackHtml(brief, agents), resolvedBrand)
   }
-  return cleaned
+  return sanitizePlaceholders(cleaned, resolvedBrand)
+}
+
+function resolveBrandName(brief: BriefInput): string {
+  if (brief.brandName && !isPlaceholderName(brief.brandName)) return brief.brandName
+  return inferBrandFromVibe(brief.rawBrief || brief.vibe || '') || 'Untitled'
 }
 
 function buildUserPrompt(brief: BriefInput, agents: AgentOutputs): string {
@@ -152,7 +162,7 @@ ${simplifications}
 - Mobile motion rules: ${mobilePlan.mobileMotionRules}
 
 == CONTENT INPUTS ==
-Brand name: ${brief.brandName || '(invent one that fits the emotional target)'}
+Brand name: ${resolveBrandName(brief)}
 Audience: ${brief.audience || '(implied by vibe)'}
 Page type: ${brief.pageType}
 Hero background image (USE THIS EXACTLY): ${brief.heroImageUrl}
@@ -185,7 +195,10 @@ Output ONLY complete HTML.`
  */
 function buildFallbackHtml(brief: BriefInput, agents: AgentOutputs): string {
   const { brandVoice, artDirection, creativeDirection, psychologyPlan, motionPlan } = agents
-  const brand = brief.brandName || inferBrandFromVibe(brief.rawBrief || brief.vibe || '') || 'Untitled'
+  // "Your Brand" (and similar) are preset placeholders submitted by the
+  // dashboard's quick-start pills. Never render them as literal copy.
+  const suppliedName = isPlaceholderName(brief.brandName) ? '' : (brief.brandName || '')
+  const brand = suppliedName || inferBrandFromVibe(brief.rawBrief || brief.vibe || '') || 'Untitled'
   const canvas = artDirection.colorPalette.canvas
   const accent = artDirection.colorPalette.accent
   const text = artDirection.colorPalette.text
@@ -224,13 +237,13 @@ h1,h2,h3{font-family:'${artDirection.typographySystem.displayFont}',Georgia,seri
 a{color:inherit;text-decoration:none}
 img{max-width:100%;height:auto;display:block}
 .wrap{max-width:1200px;margin:0 auto;padding:0 clamp(1rem,5vw,3rem)}
-.eyebrow{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:${accent};margin-bottom:18px;font-weight:600}
+.eyebrow{font-size:0.75rem;letter-spacing:0.2em;text-transform:uppercase;color:${accent};margin-bottom:18px;font-weight:600}
 .cta{display:inline-block;padding:18px 28px;background:${accent};color:${canvas};border:none;border-radius:4px;font-weight:700;text-decoration:none;min-height:44px;font-size:15px;letter-spacing:.04em;transition:filter .2s}
 .cta:hover{filter:brightness(1.1)}
-/* hero */
-.hero{min-height:100vh;padding:clamp(1rem,5vw,3rem);display:flex;flex-direction:column;justify-content:center;position:relative;background:linear-gradient(180deg,rgba(0,0,0,.25),rgba(0,0,0,.7)),url('${heroImg}') center/cover}
-.hero>*{position:relative;z-index:2}
-.hero h1{font-size:clamp(2.75rem,9vw,6.5rem);font-weight:900;margin-bottom:20px;max-width:18ch;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+/* hero — full-bleed background, content constrained and centered */
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;position:relative;background:linear-gradient(180deg,rgba(0,0,0,.25),rgba(0,0,0,.7)),url('${heroImg}') center/cover}
+.hero .wrap{position:relative;z-index:2}
+.hero h1{font-size:clamp(3rem,5vw,7rem);font-weight:900;margin-bottom:20px;max-width:18ch;text-shadow:0 2px 12px rgba(0,0,0,.6)}
 .hero .sub{font-size:clamp(17px,2.5vw,22px);opacity:.88;max-width:640px;margin-bottom:36px;font-weight:300}
 .orb-1,.orb-2,.orb-3{position:absolute;border-radius:50%;pointer-events:none}
 .orb-1{width:340px;height:340px;background:radial-gradient(circle,${accent}33 0%,transparent 70%);top:-80px;right:-60px}
@@ -271,16 +284,24 @@ footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem}
   .cta{width:100%;text-align:center}
   footer .wrap{flex-direction:column}
 }
+/* desktop — enforce max-width containers so content composes inside 1200px */
+@media(min-width:1024px){
+  .hero{padding:0}
+  .hero .wrap{padding:0 clamp(2rem,5vw,3rem)}
+  .section .inner{grid-template-columns:3fr 2fr}
+  .cta-section h2{font-size:clamp(3rem,5vw,5.5rem)}
+}
 </style>
 </head>
 <body class="grain">
 <section class="hero reveal">
 <span class="orb-1"></span><span class="orb-2"></span><span class="orb-3"></span>
-<p class="eyebrow">${brand}</p>
+<div class="wrap">
 <p class="eyebrow">${brand}</p>
 <h1>${brandVoice.heroHeadline}</h1>
 <p class="sub">${brandVoice.heroSubheadline}</p>
 <a class="cta" href="#cta">${brandVoice.ctaText}</a>
+</div>
 </section>
 
 <!-- MARQUEE -->
@@ -366,4 +387,28 @@ function inferBrandFromVibe(text: string): string {
   // derived from the vibe. Falls through to 'Untitled' if nothing fits.
   const m = text.match(/\b([A-Z][a-z]{3,12})\b/)
   return m ? m[1] : ''
+}
+
+/**
+ * The dashboard's quick-start presets ship "Your Brand", "Your Name",
+ * "Your Restaurant", "Your Event" as placeholder answers that users are
+ * supposed to edit. If they don't, the Assembler must still never emit
+ * literal placeholder copy. Match case-insensitively and also catch the
+ * common "Your + Noun" family.
+ */
+function isPlaceholderName(name: string | undefined): boolean {
+  if (!name) return false
+  const normalized = name.trim().toLowerCase()
+  return /^your\s+[a-z]+$/.test(normalized)
+}
+
+/**
+ * Strip any lingering "Your Brand" / "Your Name" / "Your Restaurant"
+ * literals from the returned HTML — either Haiku echoed the preset
+ * placeholder verbatim, or a section fell back on it. Always replace
+ * with the resolved brand name.
+ */
+function sanitizePlaceholders(html: string, brand: string): string {
+  const safe = brand || 'Untitled'
+  return html.replace(/\bYour\s+(Brand|Name|Restaurant|Event|Shop|Company|Business)\b/gi, safe)
 }

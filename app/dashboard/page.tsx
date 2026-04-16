@@ -475,7 +475,7 @@ export default function DashboardPage() {
   const [previousGeneration, setPreviousGeneration] = useState<GenerationSnapshot | null>(null)
   const [generationHistory, setGenerationHistory] = useState<Array<{ label: string; verdict: string }>>([])
   const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
-  const [viewportMode, setViewportMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
+  const [viewportMode, setViewportMode] = useState<'mobile' | 'desktop'>('desktop')
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [decisions, setDecisions] = useState<CreativeDecision[]>([])
   const [visibleDecisions, setVisibleDecisions] = useState(0)
@@ -1330,13 +1330,6 @@ export default function DashboardPage() {
                     className={`pill ${viewportMode === 'mobile' ? 'pill--active' : ''}`}
                   >
                     Mobile
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewportMode('tablet')}
-                    className={`pill ${viewportMode === 'tablet' ? 'pill--active' : ''}`}
-                  >
-                    Tablet
                   </button>
                   <button
                     type="button"
