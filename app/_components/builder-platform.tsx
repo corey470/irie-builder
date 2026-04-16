@@ -4,6 +4,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChangeEvent, Component, ErrorInfo, ReactNode, useEffect, useRef, useState } from 'react'
 import { PRESET_PLACEHOLDERS } from '@/lib/constants/presetPlaceholders'
+import { createClient as createSupabaseBrowserClient } from '@/lib/supabase/client'
+import {
+  getCurrentEditorContext,
+  diffEditorState,
+  logEdits,
+  logPublish,
+  type EditorContext,
+} from '@/lib/persistence'
 
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
@@ -2212,6 +2220,12 @@ export function EditorPage() {
   const [loaded, setLoaded] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
+  const editorContextRef = useRef<EditorContext | null>(null)
+  const prevEditStateRef = useRef<
+    | { text: Record<string, string>; image: Record<string, string>; accent: string }
+    | null
+  >(null)
+  const editLogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const saved = readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null)
@@ -2223,11 +2237,30 @@ export function EditorPage() {
 
     const nextModel = buildEditableDocumentModel(saved.html)
     setEditorModel(nextModel)
-    setTextValues(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text])))
-    setImageValues(Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src])))
-    setAccentOverride(saved.metadata?.palette?.accent || '#C9A84C')
+    const initialText = Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text]))
+    const initialImage = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src]))
+    const initialAccent = saved.metadata?.palette?.accent || '#C9A84C'
+    setTextValues(initialText)
+    setImageValues(initialImage)
+    setAccentOverride(initialAccent)
+    // Seed the edit-log baseline so the initial hydrated values aren't logged
+    // as spurious edits on first render.
+    prevEditStateRef.current = { text: initialText, image: initialImage, accent: initialAccent }
     setEditorReady(true)
     setLoaded(true)
+  }, [])
+
+  // Resolve ownerId / projectId / generationId for builder_edits inserts.
+  // Runs once; null result disables edit logging (user anonymous or no gen yet).
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient()
+    getCurrentEditorContext(supabase)
+      .then(ctx => {
+        editorContextRef.current = ctx
+      })
+      .catch(() => {
+        editorContextRef.current = null
+      })
   }, [])
 
   useEffect(() => {
@@ -2271,6 +2304,60 @@ export function EditorPage() {
     writeStorage(LAST_GENERATION_STORAGE_KEY, nextSnapshot)
   }, [accentOverride, editorModel, editorReady, generation, imageValues, textValues])
 
+  // Debounced edit logger: diffs the current editor state against the last
+  // logged baseline, INSERTs one builder_edits row per change, and UPDATEs the
+  // current builder_generations.final_html so refresh-persistence works.
+  // No-op if editor hasn't initialized, no generation id resolved, or there
+  // are no diffs.
+  useEffect(() => {
+    if (!editorReady || !editorModel || !generation) return
+    if (!prevEditStateRef.current) return
+    if (editLogTimerRef.current) clearTimeout(editLogTimerRef.current)
+    editLogTimerRef.current = setTimeout(() => {
+      const ctx = editorContextRef.current
+      if (!ctx) return
+      const prev = prevEditStateRef.current
+      if (!prev) return
+      const next = { text: textValues, image: imageValues, accent: accentOverride }
+      const diffs = diffEditorState(prev, next)
+      if (diffs.length === 0) return
+      prevEditStateRef.current = {
+        text: { ...textValues },
+        image: { ...imageValues },
+        accent: accentOverride,
+      }
+      const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
+      const currentHtml = buildEditedHtml(
+        editorModel.annotatedHtml,
+        textValues,
+        imageValues,
+        baseAccent,
+        accentOverride,
+      )
+      // Build the agent_outputs_json that should live alongside the edited
+      // final_html: same metadata shape as the seed but with palette.accent
+      // patched to the current override so hydrate re-populates the picker
+      // correctly on refresh.
+      const nextAgentOutputs = {
+        metadata: generation.metadata
+          ? {
+              ...generation.metadata,
+              palette: { ...generation.metadata.palette, accent: accentOverride },
+            }
+          : null,
+        blueprint: generation.blueprint,
+        critique: generation.critique,
+        decisions: generation.decisions,
+        label: generation.label,
+      }
+      const supabase = createSupabaseBrowserClient()
+      void logEdits(supabase, ctx, diffs, currentHtml, nextAgentOutputs)
+    }, 500)
+    return () => {
+      if (editLogTimerRef.current) clearTimeout(editLogTimerRef.current)
+    }
+  }, [accentOverride, editorModel, editorReady, generation, imageValues, textValues])
+
   function focusTextItem(id: string) {
     setSelectedTextId(id)
     setSelectedImageId(null)
@@ -2308,6 +2395,11 @@ export function EditorPage() {
     const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
     const html = buildEditedHtml(editorModel.annotatedHtml, textValues, imageValues, baseAccent, accentOverride)
     downloadHtml(html, generation.blueprint?.brandCore?.brandName || 'irie-page')
+    const ctx = editorContextRef.current
+    if (ctx) {
+      const supabase = createSupabaseBrowserClient()
+      void logPublish(supabase, ctx, html)
+    }
   }
 
   return (
@@ -2403,11 +2495,35 @@ export function PublishPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
   const [copied, setCopied] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const publishContextRef = useRef<EditorContext | null>(null)
 
   useEffect(() => {
     setGeneration(readStorage<GenerationSnapshot | null>(LAST_GENERATION_STORAGE_KEY, null))
     setLoaded(true)
   }, [])
+
+  // Resolve the editor context for logging publish events. Runs once; null
+  // result silently disables publish logging (anonymous user or no gen yet).
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient()
+    getCurrentEditorContext(supabase)
+      .then(ctx => {
+        publishContextRef.current = ctx
+      })
+      .catch(() => {
+        publishContextRef.current = null
+      })
+  }, [])
+
+  function handleDownload() {
+    if (!generation?.html) return
+    downloadHtml(generation.html, generation.blueprint?.brandCore?.brandName || 'irie-page')
+    const ctx = publishContextRef.current
+    if (ctx) {
+      const supabase = createSupabaseBrowserClient()
+      void logPublish(supabase, ctx, generation.html)
+    }
+  }
 
   const embedCode = '<iframe src="https://your-hosted-page.example/page.html" width="100%" height="100%"></iframe>'
   const htmlSize = generation?.html ? new Blob([generation.html], { type: 'text/html' }).size : 0
@@ -2437,7 +2553,7 @@ export function PublishPage() {
                   <button
                     type="button"
                     className="platform-primary-btn"
-                    onClick={() => generation?.html && downloadHtml(generation.html, generation.blueprint?.brandCore?.brandName || 'irie-page')}
+                    onClick={handleDownload}
                   >
                     Download HTML
                   </button>
