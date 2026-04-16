@@ -30,7 +30,7 @@ create table public.builder_projects (
 create table public.builder_generations (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.builder_projects(id) on delete cascade,
-  owner_id uuid not null references auth.users(id),
+  owner_id uuid not null references auth.users(id) on delete cascade,
   commerce_tenant_id uuid,
   brief_json jsonb not null,
   agent_outputs_json jsonb,
@@ -55,7 +55,7 @@ alter table public.builder_projects
 create table public.builder_edits (
   id uuid primary key default gen_random_uuid(),
   generation_id uuid not null references public.builder_generations(id) on delete cascade,
-  owner_id uuid not null references auth.users(id),
+  owner_id uuid not null references auth.users(id) on delete cascade,
   commerce_tenant_id uuid,
   edit_json jsonb not null,
   created_at timestamptz not null default now()
@@ -64,7 +64,7 @@ create table public.builder_edits (
 create table public.builder_publishes (
   id uuid primary key default gen_random_uuid(),
   generation_id uuid not null references public.builder_generations(id) on delete cascade,
-  owner_id uuid not null references auth.users(id),
+  owner_id uuid not null references auth.users(id) on delete cascade,
   commerce_tenant_id uuid,
   published_html text not null,
   published_url text,
@@ -86,6 +86,7 @@ create index builder_publishes_generation_id_idx  on public.builder_publishes(ge
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = now();
