@@ -15,6 +15,13 @@ interface GeneratePayload {
   colors: { primary: string; accent: string; background: string }
   mood: 'light' | 'dark' | 'warm'
   pageType: 'landing' | 'store' | 'portfolio' | 'event'
+  designDirection: DesignDirectionOption
+  styleBlend?: string
+  referenceStyles?: string[]
+  emotionalControls?: EmotionalControls
+  sectionFocus?: string
+  revisionDirective?: string
+  carryForwardLocks?: string[]
   userFeedback?: string
   rawBrief?: string
 }
@@ -32,8 +39,159 @@ interface CreativeDecision {
   reason: string
 }
 
+interface EmotionalControls {
+  authority: number
+  desire: number
+  warmth: number
+  tension: number
+  spectacle: number
+}
+
+interface GenerationBlueprint {
+  brandCore: {
+    brandName: string
+    brandVoice: string
+    emotionalPromise: string
+    audienceLens: string
+  }
+  storyArc: Array<{
+    stage: 'recognition' | 'curiosity' | 'desire' | 'trust' | 'action'
+    objective: string
+    execution: string
+  }>
+  designSystem: {
+    primaryDirection: string
+    supportingDirections: string[]
+    typographyStrategy: string
+    paletteStrategy: string
+    layoutRhythm: string
+  }
+  motionSystem: {
+    intensity: 'subtle' | 'editorial' | 'cinematic' | 'explosive'
+    style: string
+    revealBehavior: string
+    atmosphere: string
+  }
+  persuasionSystem: {
+    trustStrategy: string
+    proofPlacement: string
+    ctaStrategy: string
+    specificityNotes: string
+  }
+  sections: Array<{
+    id: string
+    role: string
+    heading: string
+    purpose: string
+    contentDirection: string
+  }>
+}
+
+interface CritiqueScore {
+  label: string
+  score: number
+  note: string
+}
+
+interface GenerationCritique {
+  summary: string
+  verdict: string
+  scores: CritiqueScore[]
+  recommendations: string[]
+}
+
+interface GenerationSnapshot {
+  html: string
+  blueprint: GenerationBlueprint | null
+  critique: GenerationCritique | null
+  label: string
+}
+
+interface ChangeSummary {
+  headline: string
+  improvements: string[]
+  shifts: string[]
+}
+
+function buildGenerationLabel(params: {
+  nextCount: number
+  sectionFocus: string
+  revisionDirective: string
+}): string {
+  const { nextCount, sectionFocus, revisionDirective } = params
+  if (revisionDirective.trim()) return `Gen ${nextCount}: ${revisionDirective.trim().slice(0, 48)}`
+  if (sectionFocus !== 'whole-page') return `Gen ${nextCount}: ${sectionFocus}`
+  return `Generation #${nextCount}`
+}
+
+function summarizeChange(previous: GenerationSnapshot | null, currentBlueprint: GenerationBlueprint | null, currentCritique: GenerationCritique | null): ChangeSummary | null {
+  if (!previous?.blueprint || !previous?.critique || !currentBlueprint || !currentCritique) return null
+
+  const previousScores = new Map(previous.critique.scores.map(score => [score.label, score.score]))
+  const improvements = currentCritique.scores
+    .map(score => ({
+      label: score.label,
+      delta: score.score - (previousScores.get(score.label) ?? score.score),
+    }))
+    .filter(item => item.delta >= 4)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3)
+    .map(item => `${item.label} improved by ${item.delta} points.`)
+
+  const shifts: string[] = []
+
+  if (previous.blueprint.motionSystem.intensity !== currentBlueprint.motionSystem.intensity) {
+    shifts.push(`Motion shifted from ${previous.blueprint.motionSystem.intensity} to ${currentBlueprint.motionSystem.intensity}.`)
+  }
+  if (previous.blueprint.designSystem.primaryDirection !== currentBlueprint.designSystem.primaryDirection) {
+    shifts.push(`Primary direction moved from ${previous.blueprint.designSystem.primaryDirection} to ${currentBlueprint.designSystem.primaryDirection}.`)
+  }
+  if (previous.blueprint.sections[0]?.heading !== currentBlueprint.sections[0]?.heading) {
+    shifts.push(`The opening section changed from “${previous.blueprint.sections[0]?.heading}” to “${currentBlueprint.sections[0]?.heading}.”`)
+  }
+  if (previous.blueprint.persuasionSystem.proofPlacement !== currentBlueprint.persuasionSystem.proofPlacement) {
+    shifts.push('Proof placement strategy changed to alter trust timing.')
+  }
+
+  const headline = improvements.length > 0
+    ? 'This pass made meaningful progress.'
+    : 'This pass changed direction more than raw score.'
+
+  return {
+    headline,
+    improvements,
+    shifts: shifts.slice(0, 3),
+  }
+}
+
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
+type DesignDirectionOption = 'auto' | 'nike' | 'apple' | 'vercel' | 'stripe' | 'framer' | 'notion' | 'spotify'
+type ReferenceStyleOption =
+  | 'linear'
+  | 'supabase'
+  | 'raycast'
+  | 'cursor'
+  | 'claude'
+  | 'airbnb'
+  | 'figma'
+  | 'runwayml'
+  | 'spacex'
+  | 'uber'
+  | 'ferrari'
+  | 'lamborghini'
+  | 'pinterest'
+  | 'webflow'
+  | 'notion'
+  | 'vercel'
+  | 'stripe'
+  | 'apple'
+  | 'nike'
+  | 'spotify'
+
+function isReferenceStyleOption(value: string): value is ReferenceStyleOption {
+  return REFERENCE_STYLE_LIBRARY.some(style => style.value === value)
+}
 
 /* ── INTENT DETECTION (UPGRADE 2) ─────────────── */
 
@@ -79,6 +237,7 @@ interface Preset {
   answers: string[]
   mood: MoodOption
   pageType: PageOption
+  designDirection: DesignDirectionOption
   colors: { primary: string; accent: string; background: string }
 }
 
@@ -86,33 +245,98 @@ const PRESETS: Preset[] = [
   {
     label: 'Streetwear Brand',
     answers: ['Your Brand', 'Bold, urban, premium streetwear. The energy of a drop day. Confident, slightly rebellious, always authentic.', 'Culture-driven streetwear fans 18-35', 'Built different. Worn proud.', 'skip', 'Shop the Drop'],
-    mood: 'dark', pageType: 'store',
+    mood: 'dark', pageType: 'store', designDirection: 'nike',
     colors: { primary: '#0A0A0A', accent: '#E8C547', background: '#0A0A0A' },
   },
   {
     label: 'Luxury Brand',
     answers: ['Your Brand', 'Quiet luxury. Refined, minimal, timeless. The feeling of quality before you even touch it.', 'Discerning buyers 30-55 who value craftsmanship over logos', 'Refined by design. Defined by you.', 'skip', 'Explore the Collection'],
-    mood: 'light', pageType: 'store',
+    mood: 'light', pageType: 'store', designDirection: 'apple',
     colors: { primary: '#1A1A1A', accent: '#C9A84C', background: '#F8F5F0' },
   },
   {
     label: 'Restaurant',
     answers: ['Your Restaurant', 'Warm, soulful, inviting. The smell of something good cooking. Neighborhood spot with a premium feel.', 'Local food lovers and experience seekers 25-55', 'Food that stays with you.', 'skip', 'Reserve a Table'],
-    mood: 'warm', pageType: 'landing',
+    mood: 'warm', pageType: 'landing', designDirection: 'notion',
     colors: { primary: '#1C0F00', accent: '#D47C2F', background: '#FDF6EC' },
   },
   {
     label: 'Creator Portfolio',
     answers: ['Your Name', 'Creative, editorial, confident. The portfolio of someone who knows exactly what they do and does it exceptionally well.', 'Brands and businesses looking for creative partnership', 'This is my work.', 'skip', 'See My Work'],
-    mood: 'dark', pageType: 'portfolio',
+    mood: 'dark', pageType: 'portfolio', designDirection: 'framer',
     colors: { primary: '#080808', accent: '#FF4D00', background: '#080808' },
   },
   {
     label: 'Event Page',
     answers: ['Your Event', 'High energy, exclusive, electric. The anticipation before the doors open. FOMO in the best way.', 'Event-goers and culture community 21-40', "You don't want to miss this.", 'skip', 'Get Your Tickets'],
-    mood: 'dark', pageType: 'event',
+    mood: 'dark', pageType: 'event', designDirection: 'spotify',
     colors: { primary: '#0A0008', accent: '#9B5DE5', background: '#0A0008' },
   },
+]
+
+const DESIGN_DIRECTIONS: Array<{ value: DesignDirectionOption; label: string; note: string }> = [
+  { value: 'auto', label: 'AUTO', note: 'Let Irie Builder choose the strongest direction from the brief.' },
+  { value: 'nike', label: 'NIKE', note: 'Image-led, bold type, kinetic, high-pressure street and sport energy.' },
+  { value: 'apple', label: 'APPLE', note: 'Premium restraint, cinematic product focus, polished minimalism.' },
+  { value: 'vercel', label: 'VERCEL', note: 'Sharp, technical, black-and-white precision with confidence.' },
+  { value: 'stripe', label: 'STRIPE', note: 'Elegant product storytelling, premium SaaS flow, soft depth.' },
+  { value: 'framer', label: 'FRAMER', note: 'Design-forward motion, bold landing-page rhythm, visual heat.' },
+  { value: 'notion', label: 'NOTION', note: 'Warm clarity, reading-first structure, soft minimalism.' },
+  { value: 'spotify', label: 'SPOTIFY', note: 'Dark, youth-forward, punchy, culture-driven immersion.' },
+]
+
+const REFERENCE_STYLE_LIBRARY: Array<{
+  value: ReferenceStyleOption
+  label: string
+  note: string
+}> = [
+  { value: 'linear', label: 'Linear', note: 'Sleek product calm, editorial precision, dense confidence.' },
+  { value: 'supabase', label: 'Supabase', note: 'Developer warmth, green accents, open-source clarity.' },
+  { value: 'raycast', label: 'Raycast', note: 'Glossy dark polish, gradient-native utility confidence.' },
+  { value: 'cursor', label: 'Cursor', note: 'AI-native dark tool feel, sharp developer edge.' },
+  { value: 'claude', label: 'Claude', note: 'Warm editorial calm with human, thoughtful softness.' },
+  { value: 'airbnb', label: 'Airbnb', note: 'Photography-first hospitality, warmth, and lifestyle trust.' },
+  { value: 'figma', label: 'Figma', note: 'Playful creative energy with product-led structure.' },
+  { value: 'runwayml', label: 'Runway', note: 'Cinematic, media-rich, art-tech tension.' },
+  { value: 'spacex', label: 'SpaceX', note: 'Monumental black-and-white futurism and gravitas.' },
+  { value: 'uber', label: 'Uber', note: 'Urban sharpness, compressed type, system confidence.' },
+  { value: 'ferrari', label: 'Ferrari', note: 'Luxury heat, high drama, sparing red intensity.' },
+  { value: 'lamborghini', label: 'Lamborghini', note: 'Aggressive luxury darkness with hard-edged energy.' },
+  { value: 'pinterest', label: 'Pinterest', note: 'Image-first curation, visual discovery, playful flow.' },
+  { value: 'webflow', label: 'Webflow', note: 'Design-system boldness, high-end web polish.' },
+  { value: 'notion', label: 'Notion', note: 'Warm minimalism, reading-first calm, helpful structure.' },
+  { value: 'vercel', label: 'Vercel', note: 'Technical precision, black-white confidence, product clarity.' },
+  { value: 'stripe', label: 'Stripe', note: 'Elegant conversion systems and premium SaaS polish.' },
+  { value: 'apple', label: 'Apple', note: 'Premium restraint, cinematic whitespace, polished calm.' },
+  { value: 'nike', label: 'Nike', note: 'Image-led power, bold type, kinetic street-sport energy.' },
+  { value: 'spotify', label: 'Spotify', note: 'Youthful dark immersion and culture-heavy rhythm.' },
+]
+
+const EMOTIONAL_SLIDERS: Array<{ key: keyof EmotionalControls; label: string; note: string }> = [
+  { key: 'authority', label: 'Authority', note: 'How commanding and certain the page should feel.' },
+  { key: 'desire', label: 'Desire', note: 'How magnetic and want-inducing the offer should feel.' },
+  { key: 'warmth', label: 'Warmth', note: 'How human, inviting, and emotionally safe it should feel.' },
+  { key: 'tension', label: 'Tension', note: 'How much page-turn energy and dramatic contrast it should carry.' },
+  { key: 'spectacle', label: 'Spectacle', note: 'How cinematic, vivid, and unforgettable it should look.' },
+]
+
+const DIRECTING_FOCUS_OPTIONS = [
+  { value: 'whole-page', label: 'Whole Page' },
+  { value: 'hero', label: 'Hero' },
+  { value: 'story', label: 'Story Arc' },
+  { value: 'trust', label: 'Trust Layer' },
+  { value: 'cta', label: 'CTA Close' },
+  { value: 'motion', label: 'Motion System' },
+  { value: 'conversion', label: 'Conversion Pressure' },
+]
+
+const CARRY_FORWARD_OPTIONS = [
+  { value: 'hero', label: 'Hero' },
+  { value: 'story-arc', label: 'Story Arc' },
+  { value: 'trust-layer', label: 'Trust Layer' },
+  { value: 'cta-close', label: 'CTA Close' },
+  { value: 'motion-system', label: 'Motion System' },
+  { value: 'design-system', label: 'Design System' },
 ]
 
 /* ── LOADING MESSAGES (UPGRADE 4) ─────────────── */
@@ -183,6 +407,19 @@ export default function DashboardPage() {
   const [vibeText, setVibeText] = useState('')
   const [mood, setMood] = useState<MoodOption>('dark')
   const [pageType, setPageType] = useState<PageOption>('landing')
+  const [designDirection, setDesignDirection] = useState<DesignDirectionOption>('auto')
+  const [styleBlend, setStyleBlend] = useState('')
+  const [referenceStyles, setReferenceStyles] = useState<ReferenceStyleOption[]>(['nike', 'apple'])
+  const [sectionFocus, setSectionFocus] = useState('whole-page')
+  const [revisionDirective, setRevisionDirective] = useState('')
+  const [carryForwardLocks, setCarryForwardLocks] = useState<string[]>([])
+  const [emotionalControls, setEmotionalControls] = useState<EmotionalControls>({
+    authority: 78,
+    desire: 82,
+    warmth: 54,
+    tension: 74,
+    spectacle: 80,
+  })
   const [primary, setPrimary] = useState('#111111')
   const [accent, setAccent] = useState('#C9A84C')
   const [background, setBackground] = useState('#F5F0E8')
@@ -192,6 +429,12 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [html, setHtml] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<Metadata | null>(null)
+  const [blueprint, setBlueprint] = useState<GenerationBlueprint | null>(null)
+  const [critique, setCritique] = useState<GenerationCritique | null>(null)
+  const [previousGeneration, setPreviousGeneration] = useState<GenerationSnapshot | null>(null)
+  const [generationHistory, setGenerationHistory] = useState<Array<{ label: string; verdict: string }>>([])
+  const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
+  const [viewportMode, setViewportMode] = useState<'desktop' | 'mobile'>('desktop')
   const [decisions, setDecisions] = useState<CreativeDecision[]>([])
   const [visibleDecisions, setVisibleDecisions] = useState(0)
   const [genCount, setGenCount] = useState(0)
@@ -202,6 +445,8 @@ export default function DashboardPage() {
   const [mobilePanel, setMobilePanel] = useState<'form' | 'preview' | 'log'>('form')
 
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const mobileIframeRef = useRef<HTMLIFrameElement>(null)
+  const previousIframeRef = useRef<HTMLIFrameElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const briefInputRef = useRef<HTMLInputElement>(null)
@@ -244,6 +489,15 @@ export default function DashboardPage() {
     return () => clearInterval(iv)
   }, [loading])
 
+  const writeIframeDocument = useCallback((iframe: HTMLIFrameElement | null, markup: string | null) => {
+    if (!iframe || !markup) return
+    const doc = iframe.contentDocument
+    if (!doc) return
+    doc.open()
+    doc.write(markup)
+    doc.close()
+  }, [])
+
   /* ── GENERATE ── */
   const generate = useCallback(async (
     collectedAnswers?: string[],
@@ -266,8 +520,24 @@ export default function DashboardPage() {
     // For rawBrief mode, we only need the brief
     if (!rawBrief && !brandName.trim() && !finalVibe.trim()) return
 
+    const nextGenerationLabel = buildGenerationLabel({
+      nextCount: genCount + 1,
+      sectionFocus,
+      revisionDirective,
+    })
+
     setLoading(true)
     setError(null)
+    if (html) {
+      setPreviousGeneration({
+        html,
+        blueprint,
+        critique,
+        label: generationHistory[0]?.label || `Generation #${genCount || 1}`,
+      })
+    }
+    setBlueprint(null)
+    setCritique(null)
     setDecisions([])
     setVisibleDecisions(0)
 
@@ -282,6 +552,13 @@ export default function DashboardPage() {
       colors: { primary, accent, background },
       mood,
       pageType,
+      designDirection,
+      emotionalControls,
+      ...(sectionFocus !== 'whole-page' ? { sectionFocus } : {}),
+      ...(revisionDirective.trim() ? { revisionDirective: revisionDirective.trim() } : {}),
+      ...(carryForwardLocks.length ? { carryForwardLocks } : {}),
+      ...(styleBlend.trim() ? { styleBlend: styleBlend.trim() } : {}),
+      ...(referenceStyles.length ? { referenceStyles } : {}),
       ...(feedback ? { userFeedback: feedback } : {}),
       ...(rawBrief ? { rawBrief } : {}),
     }
@@ -308,8 +585,18 @@ export default function DashboardPage() {
 
       setHtml(data.html as string)
       setMetadata(data.metadata as Metadata)
+      setBlueprint((data.blueprint as GenerationBlueprint | undefined) || null)
+      setCritique((data.critique as GenerationCritique | undefined) || null)
+      setGenerationHistory(prev => [
+        {
+          label: nextGenerationLabel,
+          verdict: ((data.critique as GenerationCritique | undefined)?.verdict) || 'New pass generated.',
+        },
+        ...prev,
+      ].slice(0, 6))
       setGenCount(prev => prev + 1)
       setMobilePanel('preview')
+      setPreviewMode(previousGeneration || html ? 'before-after' : 'current')
 
       // Parse creative decisions from response
       const apiDecisions = (data.decisions as CreativeDecision[] | undefined) || []
@@ -318,10 +605,8 @@ export default function DashboardPage() {
         setVisibleDecisions(apiDecisions.length)
       }
 
-      if (iframeRef.current) {
-        const doc = iframeRef.current.contentDocument
-        if (doc) { doc.open(); doc.write(data.html as string); doc.close() }
-      }
+      writeIframeDocument(iframeRef.current, data.html as string)
+      writeIframeDocument(mobileIframeRef.current, data.html as string)
 
       // UPGRADE 5 — 3-bubble completion
       setChatPhase('complete')
@@ -353,7 +638,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [vibeText, primary, accent, background, mood, pageType])
+  }, [vibeText, primary, accent, background, mood, pageType, designDirection, styleBlend, referenceStyles, emotionalControls, html, blueprint, critique, genCount, previousGeneration, sectionFocus, revisionDirective, generationHistory, carryForwardLocks, writeIframeDocument])
 
   /* ── JUST BUILD IT (UPGRADE 1) ── */
   const handleJustBuildIt = useCallback(() => {
@@ -447,6 +732,8 @@ export default function DashboardPage() {
       setChatPhase('generating')
       setHtml(null)
       setMetadata(null)
+      setBlueprint(null)
+      setCritique(null)
       setDecisions([])
       generate(answers.length > 0 ? answers : undefined, feedback, briefInput.trim() || undefined)
     }, 600)
@@ -465,6 +752,8 @@ export default function DashboardPage() {
   const applyPreset = useCallback((p: Preset) => {
     setMood(p.mood)
     setPageType(p.pageType)
+    setDesignDirection(p.designDirection)
+    setReferenceStyles(isReferenceStyleOption(p.designDirection) ? [p.designDirection] : [])
     setPrimary(p.colors.primary)
     setAccent(p.colors.accent)
     setBackground(p.colors.background)
@@ -514,8 +803,30 @@ export default function DashboardPage() {
     setError(null)
     setChatPhase('conversation')
     setChatExpanded(false)
+    setBlueprint(null)
+    setCritique(null)
+    setPreviousGeneration(null)
+    setGenerationHistory([])
+    setPreviewMode('current')
+    setViewportMode('desktop')
     setDecisions([])
     setVisibleDecisions(0)
+  }, [])
+
+  const toggleReferenceStyle = useCallback((style: ReferenceStyleOption) => {
+    setReferenceStyles(prev =>
+      prev.includes(style)
+        ? prev.filter(item => item !== style)
+        : [...prev, style]
+    )
+  }, [])
+
+  const toggleCarryForwardLock = useCallback((value: string) => {
+    setCarryForwardLocks(prev =>
+      prev.includes(value)
+        ? prev.filter(item => item !== value)
+        : [...prev, value]
+    )
   }, [])
 
   /* helpers */
@@ -533,11 +844,16 @@ export default function DashboardPage() {
     a.click(); URL.revokeObjectURL(url)
   }
   const onIframeLoad = useCallback(() => {
-    if (html && iframeRef.current) {
-      const doc = iframeRef.current.contentDocument
-      if (doc) { doc.open(); doc.write(html); doc.close() }
-    }
-  }, [html])
+    writeIframeDocument(iframeRef.current, html)
+  }, [html, writeIframeDocument])
+  const onMobileIframeLoad = useCallback(() => {
+    writeIframeDocument(mobileIframeRef.current, html)
+  }, [html, writeIframeDocument])
+  const onPreviousIframeLoad = useCallback(() => {
+    writeIframeDocument(previousIframeRef.current, previousGeneration?.html || null)
+  }, [previousGeneration, writeIframeDocument])
+  const changeSummary = summarizeChange(previousGeneration, blueprint, critique)
+  const mobileImpactScore = critique?.scores.find(score => score.label === 'Mobile Impact')?.score
 
   const showInput = chatPhase === 'conversation' || chatPhase === 'feedback'
 
@@ -558,6 +874,18 @@ export default function DashboardPage() {
           <div className="db-form-inner">
             <h1 className="db-logo">Irie<span>Builder</span></h1>
             <p className="db-sub">Your vision. AI brings it alive.</p>
+            <div className="db-form-hero">
+              <p className="db-form-kicker">Creative Direction Engine</p>
+              <h2 className="db-form-title">The blaze before the volcano.</h2>
+              <p className="db-form-copy">
+                This is where psychology, taste, and direction come together so the output feels inevitable before it ever goes live.
+              </p>
+              <div className="db-form-badges">
+                <span>Design Direction</span>
+                <span>Psychology</span>
+                <span>Mobile Impact</span>
+              </div>
+            </div>
 
             {/* ── PRESETS ── */}
             <div className="db-presets">
@@ -702,6 +1030,129 @@ export default function DashboardPage() {
               </div>
             </fieldset>
 
+            <fieldset className="db-fieldset">
+              <legend className="db-label">Design Toolkit</legend>
+              <div className="db-pills" role="radiogroup" aria-label="Design direction selection">
+                {DESIGN_DIRECTIONS.map(direction => (
+                  <Pill
+                    key={direction.value}
+                    value={direction.value}
+                    label={direction.label}
+                    selected={designDirection}
+                    onSelect={setDesignDirection}
+                  />
+                ))}
+              </div>
+              <p className="db-helper">
+                {DESIGN_DIRECTIONS.find(direction => direction.value === designDirection)?.note}
+              </p>
+            </fieldset>
+
+            <label className="db-label" htmlFor="styleBlend">Style Blend (optional)</label>
+            <textarea
+              id="styleBlend"
+              className="db-textarea db-textarea-sm"
+              rows={2}
+              placeholder="e.g. Nike energy with Apple restraint. Vercel precision but warmer. Framer motion with streetwear edge."
+              value={styleBlend}
+              onChange={e => setStyleBlend(e.target.value)}
+            />
+
+            <fieldset className="db-fieldset">
+              <legend className="db-label">Reference Style Library</legend>
+              <div className="db-reference-grid" role="group" aria-label="Reference style library">
+                {REFERENCE_STYLE_LIBRARY.map(style => {
+                  const active = referenceStyles.includes(style.value)
+                  return (
+                    <button
+                      key={style.value}
+                      type="button"
+                      className={`db-reference-card ${active ? 'db-reference-card--active' : ''}`}
+                      onClick={() => toggleReferenceStyle(style.value)}
+                    >
+                      <span className="db-reference-name">{style.label}</span>
+                      <span className="db-reference-note">{style.note}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="db-helper">
+                These references act like a creative moodboard for the generator. Mix them, or let Auto decide the lead.
+              </p>
+            </fieldset>
+
+            <fieldset className="db-fieldset">
+              <legend className="db-label">Emotional Controls</legend>
+              <div className="db-sliders">
+                {EMOTIONAL_SLIDERS.map(slider => (
+                  <label key={slider.key} className="db-slider">
+                    <div className="db-slider-head">
+                      <span className="db-slider-label">{slider.label}</span>
+                      <span className="db-slider-value">{emotionalControls[slider.key]}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={emotionalControls[slider.key]}
+                      onChange={e => setEmotionalControls(prev => ({ ...prev, [slider.key]: Number(e.target.value) }))}
+                    />
+                    <span className="db-slider-note">{slider.note}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="db-fieldset">
+              <legend className="db-label">Directing Pass</legend>
+              <div className="db-pills" role="radiogroup" aria-label="Section focus selection">
+                {DIRECTING_FOCUS_OPTIONS.map(option => (
+                  <Pill
+                    key={option.value}
+                    value={option.value}
+                    label={option.label.toUpperCase()}
+                    selected={sectionFocus}
+                    onSelect={setSectionFocus}
+                  />
+                ))}
+              </div>
+              <label className="db-label" htmlFor="revisionDirective">Creative Note</label>
+              <textarea
+                id="revisionDirective"
+                className="db-textarea db-textarea-sm"
+                rows={2}
+                placeholder="e.g. Make the hero feel more dangerous. Hold the CTA longer. Push trust earlier. Add more cinematic reveals."
+                value={revisionDirective}
+                onChange={e => setRevisionDirective(e.target.value)}
+              />
+              <p className="db-helper">
+                This lets you direct the next pass like a creative review instead of starting over blind.
+              </p>
+            </fieldset>
+
+            <fieldset className="db-fieldset">
+              <legend className="db-label">Carry Forward</legend>
+              <div className="db-lock-grid" role="group" aria-label="Carry forward locks">
+                {CARRY_FORWARD_OPTIONS.map(option => {
+                  const active = carryForwardLocks.includes(option.value)
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`db-lock-chip ${active ? 'db-lock-chip--active' : ''}`}
+                      onClick={() => toggleCarryForwardLock(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="db-helper">
+                Lock the parts that are already right so the next pass evolves around them instead of replacing them.
+              </p>
+            </fieldset>
+
             <label className="db-label">Colors</label>
             <div className="db-colors">
               <div className="db-color-item">
@@ -742,15 +1193,120 @@ export default function DashboardPage() {
 
           {html && !loading && (
             <>
+              <div className="db-stage-top">
+                <div className="db-stage-copy">
+                  <p className="db-stage-kicker">Live Direction Stage</p>
+                  <h2 className="db-stage-title">{blueprint?.brandCore.brandName || answers[0] || 'Creative Output'}</h2>
+                  <p className="db-stage-sub">
+                    {critique?.summary || 'Shape the page, push the emotion, and judge the result like a real creative director.'}
+                  </p>
+                </div>
+                <div className="db-stage-stats">
+                  <div className="db-stage-stat">
+                    <span className="db-stage-stat-label">Direction</span>
+                    <span className="db-stage-stat-value">{blueprint?.designSystem.primaryDirection || designDirection}</span>
+                  </div>
+                  <div className="db-stage-stat">
+                    <span className="db-stage-stat-label">Motion</span>
+                    <span className="db-stage-stat-value">{blueprint?.motionSystem.intensity || 'editorial'}</span>
+                  </div>
+                  <div className="db-stage-stat">
+                    <span className="db-stage-stat-label">Mobile</span>
+                    <span className="db-stage-stat-value">{mobileImpactScore ?? '—'}</span>
+                  </div>
+                </div>
+              </div>
               <div className="db-preview-actions">
                 <button onClick={openFullScreen} className="db-action-btn">View Full Screen</button>
                 <button onClick={downloadHtml} className="db-action-btn">Download HTML</button>
-                <button onClick={() => { setHtml(null); setMetadata(null); setDecisions([]); setMobilePanel('form') }} className="db-action-btn">Regenerate</button>
+                <button
+                  onClick={() => setViewportMode(prev => prev === 'desktop' ? 'mobile' : 'desktop')}
+                  className="db-action-btn"
+                >
+                  {viewportMode === 'mobile' ? 'Desktop View' : 'Mobile View'}
+                </button>
+                {previousGeneration && (
+                  <button
+                    onClick={() => setPreviewMode(prev => prev === 'current' ? 'before-after' : 'current')}
+                    className="db-action-btn"
+                  >
+                    {previewMode === 'before-after' ? 'Current Only' : 'Before / After'}
+                  </button>
+                )}
+                <button onClick={() => { setHtml(null); setMetadata(null); setBlueprint(null); setCritique(null); setPreviewMode('current'); setDecisions([]); setMobilePanel('form') }} className="db-action-btn">Regenerate</button>
                 <button onClick={() => setMobilePanel('form')} className="db-action-btn db-back-btn">Back to Edit</button>
               </div>
-              <iframe ref={iframeRef} title="Generated site preview"
-                className="db-iframe" sandbox="allow-scripts allow-same-origin"
-                onLoad={onIframeLoad} />
+              {previewMode === 'before-after' && previousGeneration ? (
+                <div className="db-compare">
+                  <div className={`db-compare-panel ${viewportMode === 'mobile' ? 'db-compare-panel--mobile' : ''}`}>
+                    <div className="db-compare-label">Before</div>
+                    <iframe
+                      ref={previousIframeRef}
+                      title="Previous generated site preview"
+                      className="db-iframe"
+                      sandbox="allow-scripts allow-same-origin"
+                      onLoad={onPreviousIframeLoad}
+                    />
+                  </div>
+                  <div className={`db-compare-panel ${viewportMode === 'mobile' ? 'db-compare-panel--mobile' : ''}`}>
+                    <div className="db-compare-label">After</div>
+                    <iframe
+                      ref={iframeRef}
+                      title="Generated site preview"
+                      className="db-iframe"
+                      sandbox="allow-scripts allow-same-origin"
+                      onLoad={onIframeLoad}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className={`db-single-preview ${viewportMode === 'mobile' ? 'db-single-preview--mobile' : ''}`}>
+                  {viewportMode === 'desktop' ? (
+                    <div className="db-stage-layout">
+                      <div className="db-desktop-stage">
+                        <iframe ref={iframeRef} title="Generated site preview"
+                          className="db-iframe" sandbox="allow-scripts allow-same-origin"
+                          onLoad={onIframeLoad} />
+                      </div>
+                      <aside className="db-device-rail">
+                        <div className="db-device-card">
+                          <div className="db-device-card-head">
+                            <div>
+                              <span className="db-device-label">Phone Preview</span>
+                              <p className="db-device-copy">See the emotional hit where it matters most.</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="db-device-switch"
+                              onClick={() => setViewportMode('mobile')}
+                            >
+                              Focus Mobile
+                            </button>
+                          </div>
+                          <div className="db-phone-shell">
+                            <iframe
+                              ref={mobileIframeRef}
+                              title="Generated mobile site preview"
+                              className="db-phone-iframe"
+                              sandbox="allow-scripts allow-same-origin"
+                              onLoad={onMobileIframeLoad}
+                            />
+                          </div>
+                        </div>
+                        <div className="db-device-note">
+                          <span className="db-device-label">Creative Pressure</span>
+                          <strong>{critique?.verdict || 'Output ready for direction.'}</strong>
+                          <p>{changeSummary?.headline || 'Compare passes, keep what works, and push what still feels safe.'}</p>
+                        </div>
+                      </aside>
+                    </div>
+                  ) : (
+                    <iframe ref={iframeRef} title="Generated site preview"
+                      className="db-iframe" sandbox="allow-scripts allow-same-origin"
+                      onLoad={onIframeLoad} />
+                  )}
+                </div>
+              )}
             </>
           )}
         </main>
@@ -758,6 +1314,140 @@ export default function DashboardPage() {
         {/* ══════════════ RIGHT PANEL — CREATIVE DECISIONS ══════════════ */}
         <aside className={`db-panel db-log ${mobilePanel === 'log' ? 'db-panel--active' : ''}`}>
           <h2 className="db-log-title">Creative Decisions</h2>
+          <p className="db-log-sub">Blueprint, critique, compare, and carry-forward all live here.</p>
+
+          {blueprint && (
+            <div className="db-blueprint">
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Brand Core</span>
+                <span className="db-log-value">{blueprint.brandCore.brandName}</span>
+                <span className="db-log-reason">{blueprint.brandCore.emotionalPromise}</span>
+                <span className="db-log-reason">Voice: {blueprint.brandCore.brandVoice}</span>
+                <span className="db-log-reason">Audience: {blueprint.brandCore.audienceLens}</span>
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Story Arc</span>
+                {blueprint.storyArc.map(step => (
+                  <div key={step.stage} className="db-blueprint-step">
+                    <span className="db-blueprint-step-title">{step.stage}</span>
+                    <span className="db-log-value">{step.objective}</span>
+                    <span className="db-log-reason">{step.execution}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Design System</span>
+                <span className="db-log-value">{blueprint.designSystem.primaryDirection}</span>
+                <span className="db-log-reason">Supporting: {blueprint.designSystem.supportingDirections.join(', ') || 'None'}</span>
+                <span className="db-log-reason">{blueprint.designSystem.typographyStrategy}</span>
+                <span className="db-log-reason">{blueprint.designSystem.paletteStrategy}</span>
+                <span className="db-log-reason">{blueprint.designSystem.layoutRhythm}</span>
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Motion System</span>
+                <span className="db-log-value">{blueprint.motionSystem.intensity}</span>
+                <span className="db-log-reason">{blueprint.motionSystem.style}</span>
+                <span className="db-log-reason">{blueprint.motionSystem.revealBehavior}</span>
+                <span className="db-log-reason">{blueprint.motionSystem.atmosphere}</span>
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Persuasion System</span>
+                <span className="db-log-reason">{blueprint.persuasionSystem.trustStrategy}</span>
+                <span className="db-log-reason">Proof: {blueprint.persuasionSystem.proofPlacement}</span>
+                <span className="db-log-reason">CTA: {blueprint.persuasionSystem.ctaStrategy}</span>
+                <span className="db-log-reason">{blueprint.persuasionSystem.specificityNotes}</span>
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Section Plan</span>
+                {blueprint.sections.map(section => (
+                  <div key={section.id} className="db-blueprint-step">
+                    <span className="db-blueprint-step-title">{section.heading}</span>
+                    <span className="db-log-value">{section.role}</span>
+                    <span className="db-log-reason">{section.purpose}</span>
+                    <span className="db-log-reason">{section.contentDirection}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {critique && (
+            <div className="db-blueprint">
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Self-Critique</span>
+                <span className="db-log-value">{critique.verdict}</span>
+                <span className="db-log-reason">{critique.summary}</span>
+              </div>
+
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Scores</span>
+                {critique.scores.map(score => (
+                  <div key={score.label} className="db-score-row">
+                    <span className="db-score-label">{score.label}</span>
+                    <span className="db-score-value">{score.score}</span>
+                  </div>
+                ))}
+              </div>
+
+              {critique.recommendations.length > 0 && (
+                <div className="db-blueprint-block">
+                  <span className="db-log-label">Recommendations</span>
+                  {critique.recommendations.map(rec => (
+                    <span key={rec} className="db-log-reason">{rec}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {previousGeneration && (
+            <div className="db-blueprint">
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Before / After</span>
+                <span className="db-log-value">{previousGeneration.label} → Generation #{genCount}</span>
+                <span className="db-log-reason">
+                  {previousGeneration.critique?.verdict || 'Previous pass saved for comparison.'}
+                </span>
+                <span className="db-log-reason">
+                  {critique?.verdict || 'Current pass ready for comparison.'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {changeSummary && (
+            <div className="db-blueprint">
+              <div className="db-blueprint-block">
+                <span className="db-log-label">What Changed</span>
+                <span className="db-log-value">{changeSummary.headline}</span>
+                {changeSummary.improvements.map(item => (
+                  <span key={item} className="db-log-reason">{item}</span>
+                ))}
+                {changeSummary.shifts.map(item => (
+                  <span key={item} className="db-log-reason">{item}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {generationHistory.length > 0 && (
+            <div className="db-blueprint">
+              <div className="db-blueprint-block">
+                <span className="db-log-label">Pass History</span>
+                {generationHistory.map(item => (
+                  <div key={item.label} className="db-blueprint-step">
+                    <span className="db-blueprint-step-title">{item.label}</span>
+                    <span className="db-log-reason">{item.verdict}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {errorLog.length > 0 && (
             <div className="db-log-errors">
@@ -815,7 +1505,7 @@ const dashboardCSS = `
   body{font-family:'Syne',system-ui,sans-serif;background:var(--black);color:var(--text);overflow:hidden;height:100dvh}
 
   /* ── LAYOUT ── */
-  .db{display:grid;grid-template-columns:380px 1fr 280px;height:100dvh}
+  .db{display:grid;grid-template-columns:400px 1fr 340px;height:100dvh}
   .db-panel{overflow-y:auto;height:100%}
 
   /* ── MOBILE NAV ── */
@@ -830,6 +1520,15 @@ const dashboardCSS = `
   .db-logo{font-family:'Playfair Display',Georgia,serif;font-size:24px;font-weight:700;letter-spacing:0.01em;margin-bottom:2px}
   .db-logo span{font-style:italic;font-weight:400;color:var(--gold)}
   .db-sub{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .db-form-hero{padding:18px;border:1px solid var(--border);border-radius:16px;background:
+    radial-gradient(circle at top right, rgba(201,168,76,0.16), transparent 42%),
+    linear-gradient(180deg, rgba(201,168,76,0.06), rgba(255,255,255,0.01));
+    margin-bottom:18px;box-shadow:0 22px 50px rgba(0,0,0,0.28)}
+  .db-form-kicker{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:10px}
+  .db-form-title{font-family:'Playfair Display',Georgia,serif;font-size:28px;line-height:1.02;color:var(--text);margin-bottom:10px}
+  .db-form-copy{font-size:13px;line-height:1.7;color:rgba(242,237,228,0.72);margin-bottom:14px}
+  .db-form-badges{display:flex;flex-wrap:wrap;gap:8px}
+  .db-form-badges span{padding:7px 10px;border:1px solid rgba(201,168,76,0.24);border-radius:999px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);background:rgba(0,0,0,0.18)}
 
   /* presets */
   .db-presets{margin-bottom:16px}
@@ -905,6 +1604,24 @@ const dashboardCSS = `
   .pill--active{background:var(--gold-dim);border-color:var(--gold);color:var(--gold)}
 
   .db-colors{display:flex;gap:12px}
+  .db-helper{font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px}
+  .db-reference-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .db-reference-card{padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:#0d0d0d;color:var(--muted);text-align:left;cursor:pointer;transition:border-color .2s,transform .2s,color .2s,background .2s;min-height:88px}
+  .db-reference-card:hover{border-color:var(--gold);transform:translateY(-1px);color:var(--text)}
+  .db-reference-card--active{border-color:var(--gold);background:var(--gold-dim);color:var(--text)}
+  .db-reference-name{display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px;color:inherit}
+  .db-reference-note{display:block;font-size:11px;line-height:1.45;color:inherit}
+  .db-sliders{display:flex;flex-direction:column;gap:10px}
+  .db-slider{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:#0d0d0d}
+  .db-slider-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .db-slider-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
+  .db-slider-value{font-size:11px;color:var(--gold);font-variant-numeric:tabular-nums}
+  .db-slider input[type="range"]{width:100%;accent-color:var(--gold)}
+  .db-slider-note{font-size:11px;line-height:1.45;color:var(--muted)}
+  .db-lock-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .db-lock-chip{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:#0d0d0d;color:var(--muted);font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:border-color .2s,color .2s,background .2s;min-height:44px}
+  .db-lock-chip:hover{border-color:var(--gold);color:var(--text)}
+  .db-lock-chip--active{border-color:var(--gold);background:var(--gold-dim);color:var(--gold)}
   .db-color-item{display:flex;align-items:center;gap:8px}
   .db-color-item input[type="color"]{width:44px;height:44px;border:1px solid var(--border);border-radius:var(--radius);padding:2px;background:var(--black);cursor:pointer}
   .db-color-item span{font-size:11px;color:var(--muted);line-height:1.4}
@@ -915,6 +1632,17 @@ const dashboardCSS = `
 
   /* ── CENTER: PREVIEW ── */
   .db-preview{background:var(--black);position:relative;display:flex;flex-direction:column}
+  .db-stage-top{display:flex;justify-content:space-between;gap:18px;padding:20px 20px 14px;border-bottom:1px solid rgba(201,168,76,0.12);background:
+    radial-gradient(circle at top left, rgba(201,168,76,0.14), transparent 35%),
+    linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0))}
+  .db-stage-copy{max-width:620px}
+  .db-stage-kicker{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:8px}
+  .db-stage-title{font-family:'Playfair Display',Georgia,serif;font-size:34px;line-height:1;color:var(--text);margin-bottom:8px}
+  .db-stage-sub{font-size:13px;line-height:1.7;color:rgba(242,237,228,0.68)}
+  .db-stage-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;min-width:340px}
+  .db-stage-stat{padding:14px 12px;border:1px solid rgba(201,168,76,0.14);border-radius:14px;background:rgba(8,8,8,0.42);display:flex;flex-direction:column;gap:6px}
+  .db-stage-stat-label{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  .db-stage-stat-value{font-size:14px;color:var(--text);text-transform:capitalize}
   .db-placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;gap:4px}
   .db-placeholder-title{font-family:'Playfair Display',Georgia,serif;font-size:clamp(26px,3.5vw,44px);font-style:italic;color:var(--text);line-height:1.15}
   .db-placeholder-sub{font-size:13px;color:var(--gold);letter-spacing:0.04em;margin-top:12px;max-width:380px;line-height:1.5;opacity:0.7}
@@ -929,11 +1657,40 @@ const dashboardCSS = `
   .db-action-btn{padding:8px 16px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Syne',system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;transition:border-color 0.2s,color 0.2s;min-height:44px}
   .db-action-btn:hover{border-color:var(--gold);color:var(--gold)}
   .db-back-btn{display:none}
+  .db-compare{display:grid;grid-template-columns:1fr 1fr;gap:1px;flex:1;background:var(--border)}
+  .db-compare-panel{display:flex;flex-direction:column;min-height:0;background:var(--black)}
+  .db-compare-panel--mobile{max-width:420px;width:100%;margin:0 auto;background:#050505}
+  .db-compare-label{padding:8px 12px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);background:var(--surface)}
+  .db-single-preview{flex:1;display:flex;background:var(--black)}
+  .db-single-preview--mobile{max-width:430px;width:100%;margin:0 auto;background:#050505;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .db-stage-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;flex:1;padding:18px}
+  .db-desktop-stage{min-height:0;border:1px solid rgba(201,168,76,0.12);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.42)}
+  .db-device-rail{display:flex;flex-direction:column;gap:14px}
+  .db-device-card{padding:14px;border:1px solid rgba(201,168,76,0.16);border-radius:18px;background:linear-gradient(180deg, rgba(201,168,76,0.08), rgba(255,255,255,0.01));box-shadow:0 24px 60px rgba(0,0,0,0.35)}
+  .db-device-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}
+  .db-device-label{display:block;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:4px}
+  .db-device-copy{font-size:12px;line-height:1.5;color:rgba(242,237,228,0.62)}
+  .db-device-switch{border:1px solid rgba(201,168,76,0.2);background:rgba(0,0,0,0.16);color:var(--text);padding:10px 12px;border-radius:999px;font-family:'Syne',system-ui,sans-serif;font-size:10px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;min-height:44px}
+  .db-device-switch:hover{border-color:var(--gold);color:var(--gold)}
+  .db-phone-shell{width:100%;max-width:248px;margin:0 auto;padding:10px;border-radius:28px;background:#050505;border:1px solid rgba(201,168,76,0.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.04),0 28px 70px rgba(0,0,0,0.45)}
+  .db-phone-shell::before{content:'';display:block;width:74px;height:7px;border-radius:999px;background:rgba(242,237,228,0.16);margin:0 auto 10px}
+  .db-phone-iframe{width:100%;height:560px;border:none;border-radius:20px;background:white}
+  .db-device-note{padding:16px;border:1px solid rgba(201,168,76,0.14);border-radius:18px;background:rgba(255,255,255,0.02)}
+  .db-device-note strong{display:block;font-family:'Playfair Display',Georgia,serif;font-size:22px;line-height:1.1;color:var(--text);margin-bottom:8px}
+  .db-device-note p{font-size:12px;line-height:1.6;color:rgba(242,237,228,0.66)}
   .db-iframe{flex:1;width:100%;border:none;background:white}
 
   /* ── RIGHT: CREATIVE DECISIONS ── */
   .db-log{background:var(--surface);border-left:1px solid var(--border);padding:28px 20px}
   .db-log-title{font-family:'Playfair Display',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:20px}
+  .db-log-sub{font-size:12px;line-height:1.6;color:rgba(242,237,228,0.58);margin:-10px 0 20px}
+  .db-blueprint{display:flex;flex-direction:column;gap:14px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+  .db-blueprint-block{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:#0d0d0d}
+  .db-blueprint-step{display:flex;flex-direction:column;gap:2px;padding-top:8px;margin-top:8px;border-top:1px solid rgba(201,168,76,0.08)}
+  .db-blueprint-step-title{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);font-weight:700}
+  .db-score-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;margin-top:6px;border-top:1px solid rgba(201,168,76,0.08)}
+  .db-score-label{font-size:12px;color:var(--text)}
+  .db-score-value{font-size:12px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums}
 
   .db-log-errors{margin-bottom:16px}
   .db-log-error{display:flex;flex-direction:column;gap:2px;padding:10px 12px;margin-bottom:8px;background:rgba(220,60,60,0.08);border:1px solid rgba(220,60,60,0.2);border-radius:var(--radius)}
@@ -959,7 +1716,17 @@ const dashboardCSS = `
   .db::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:100;opacity:0.03;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-repeat:repeat;background-size:256px 256px}
 
   /* ── RESPONSIVE ── */
-  @media(max-width:1024px){.db{grid-template-columns:340px 1fr 0}.db-log{display:none}}
+  @media(max-width:1200px){
+    .db{grid-template-columns:360px 1fr 0}
+    .db-log{display:none}
+    .db-stage-layout{grid-template-columns:1fr}
+    .db-device-rail{display:none}
+  }
+  @media(max-width:1024px){
+    .db{grid-template-columns:340px 1fr 0}
+    .db-stage-top{flex-direction:column}
+    .db-stage-stats{min-width:0}
+  }
   @media(max-width:768px){
     .db{display:flex;flex-direction:column;position:relative}
     .db-mobile-nav{display:flex}
@@ -972,6 +1739,15 @@ const dashboardCSS = `
     .db-presets-row{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
     .chat{max-height:300px}
     .jbi-input,.jbi-btn{width:100%}
+    .db-reference-grid{grid-template-columns:1fr}
+    .db-lock-grid{grid-template-columns:1fr}
+    .db-compare{grid-template-columns:1fr}
+    .db-stage-top{padding:16px}
+    .db-stage-title{font-size:28px}
+    .db-stage-stats{grid-template-columns:1fr 1fr}
+    .db-stage-layout{padding:0}
+    .db-form-hero{padding:16px}
+    .db-form-title{font-size:24px}
   }
 
   @media(prefers-reduced-motion:reduce){

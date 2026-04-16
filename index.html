@@ -40,11 +40,16 @@ body::after{content:'';position:fixed;inset:0;background-image:url("data:image/s
 nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:1.5rem var(--pad);display:flex;justify-content:space-between;align-items:center;transition:padding 0.5s ease,background 0.5s ease;background:linear-gradient(to bottom,rgba(8,8,8,0.92),transparent)}
 nav.scrolled{padding:0.9rem var(--pad);background:rgba(8,8,8,0.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(201,168,76,0.08)}
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:var(--gold);letter-spacing:0.05em;text-decoration:none;opacity:0;animation:fadeDown 1s 0.5s ease forwards;transition:transform 0.5s ease,opacity 0.5s ease}
+.nav-actions{display:flex;align-items:center;gap:1rem}
 .nav-tag{font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);opacity:0;animation:fadeDown 1s 0.7s ease forwards;transition:transform 0.5s ease,opacity 0.5s ease}
+.nav-link{font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);text-decoration:none;border:1px solid rgba(201,168,76,0.24);padding:0.65rem 0.9rem;opacity:0;animation:fadeDown 1s 0.9s ease forwards;transition:background 0.3s,color 0.3s,border-color 0.3s}
+.nav-link:hover{background:var(--gold);color:var(--black);border-color:var(--gold)}
 nav.scrolled .nav-logo{transform:translateX(12px)}
 nav.scrolled .nav-tag{transform:translateX(-12px);opacity:0.3}
+nav.scrolled .nav-link{transform:translateX(-6px)}
 nav.deep-scroll .nav-logo{opacity:0.12;transform:translateX(30px)}
 nav.deep-scroll .nav-tag{opacity:0.06;transform:translateX(-30px)}
+nav.deep-scroll .nav-link{opacity:0.18}
 
 /* HERO */
 .hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:8rem var(--pad) 5rem;position:relative;overflow:hidden}
@@ -61,6 +66,9 @@ nav.deep-scroll .nav-tag{opacity:0.06;transform:translateX(-30px)}
 .hero-sub{font-size:clamp(0.95rem,3vw,1.2rem);line-height:1.75;color:var(--muted);max-width:600px;margin-bottom:2.5rem;opacity:0;animation:fadeUp 1s 0.8s ease forwards}
 .hero-sub strong{color:var(--cream);font-weight:500}
 .hero-form-wrap{opacity:0;animation:fadeUp 1s 1s ease forwards;width:100%;max-width:480px}
+.hero-actions{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-top:1rem}
+.hero-secondary-link{display:inline-flex;align-items:center;justify-content:center;padding:0.9rem 1.15rem;border:1px solid var(--border);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--cream);text-decoration:none;transition:background 0.3s,border-color 0.3s,color 0.3s}
+.hero-secondary-link:hover{background:rgba(242,237,228,0.06);border-color:rgba(201,168,76,0.45);color:var(--gold)}
 .waitlist-form{display:flex;gap:0;width:100%;margin-bottom:0.75rem}
 .waitlist-input{flex:1;min-width:0;background:rgba(242,237,228,0.06);border:1px solid var(--border);border-right:none;color:var(--cream);font-family:'Syne',sans-serif;font-size:14px;padding:0.9rem 1.25rem;outline:none;transition:background 0.3s,border-color 0.3s}
 .waitlist-input::placeholder{color:rgba(242,237,228,0.3)}
@@ -199,12 +207,16 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
   .modes-grid{grid-template-columns:1fr}
   .proof-grid{grid-template-columns:1fr}
   .section-cta{grid-template-columns:1fr;gap:3rem}
+  .nav-actions{gap:0.55rem}
+  .nav-link{padding:0.55rem 0.7rem;letter-spacing:0.12em}
   footer{flex-direction:column;align-items:flex-start;gap:1.25rem}
 }
 @media(max-width:480px){
   .waitlist-form{flex-direction:column}
   .waitlist-input{border-right:1px solid var(--border);border-bottom:none}
   .waitlist-btn{width:100%;text-align:center}
+  .hero-actions{flex-direction:column;align-items:stretch}
+  .hero-secondary-link{text-align:center}
   .steps{grid-template-columns:1fr}
 }
 </style>
@@ -215,7 +227,10 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
 
 <nav id="mainNav">
   <a href="#" class="nav-logo">Irie Builder</a>
-  <span class="nav-tag">Early Access</span>
+  <div class="nav-actions">
+    <span class="nav-tag">Creative Intelligence Engine</span>
+    <a href="https://www.iriebuilder.com/dashboard" class="nav-link">Dashboard</a>
+  </div>
 </nav>
 
 <!-- 1. HERO -->
@@ -226,7 +241,7 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
   <h1 class="hero-title">Websites that<br><em>feel alive.</em></h1>
   <p class="hero-sub">
     Irie Builder turns your brand into a living, breathing website &mdash;
-    <strong>powered by AI and built for creators, fashion brands, and modern businesses that want more than a basic site.</strong>
+    <strong>with design direction, psychology, emotional controls, critique, compare mode, and mobile-first impact built into the engine.</strong>
   </p>
   <div class="hero-form-wrap">
     <form class="waitlist-form" id="heroForm" onsubmit="handleSubmit(event,'heroSuccess','hero')">
@@ -234,7 +249,10 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
       <button type="submit" class="waitlist-btn">Join Early Access</button>
     </form>
     <div class="success-msg" id="heroSuccess">&#10003; &nbsp; You're in. We'll be in touch soon.</div>
-    <p class="hero-cta-sub">Be first to build something different.</p>
+    <div class="hero-actions">
+      <a href="https://www.iriebuilder.com/dashboard" class="hero-secondary-link">Enter Dashboard</a>
+    </div>
+    <p class="hero-cta-sub">Blueprint it. Push it. Compare it. Lock what works.</p>
     <p class="hero-no-template">No templates. No coding. Just your vision &mdash; brought to life.</p>
   </div>
   <div class="text-strip"><span class="text-strip-inner">Feeling &nbsp;&#183;&nbsp; Identity &nbsp;&#183;&nbsp; Culture &nbsp;&#183;&nbsp; Expression &nbsp;&#183;&nbsp; Feeling &nbsp;&#183;&nbsp; Identity &nbsp;&#183;&nbsp; Culture &nbsp;&#183;&nbsp; Expression &nbsp;&#183;&nbsp;</span></div>
@@ -247,14 +265,14 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
     <div data-anim="slide-left">
       <h2 class="section-title">Your AI creative<br><em>director.</em></h2>
       <div class="section-body">
-        <p>Irie Builder is an AI-powered website creator that acts like your creative director.</p>
-        <p>You describe your brand, your vibe, your vision &mdash; and it builds a full website experience around it.</p>
-        <p>Layout, motion, storytelling, visuals &mdash; all generated and customizable in real time.</p>
+        <p>Irie Builder acts like a creative director, strategist, and motion editor in one interface.</p>
+        <p>You bring the feeling, the audience, the energy, the cultural references. It builds a full blueprint before it builds the page.</p>
+        <p>Story arc, design system, persuasion timing, critique, compare mode, mobile impact &mdash; all shaped in real time so the site feels directed, not generated.</p>
       </div>
     </div>
     <div class="what-visual" data-anim="fade">
       <div class="what-visual-text">IB</div>
-      <span class="what-visual-label">AI Creative Director</span>
+      <span class="what-visual-label">Creative Intelligence System</span>
     </div>
   </div>
 </section>
@@ -277,43 +295,43 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
 <!-- 4. HOW IT WORKS -->
 <section class="section">
   <span class="section-eyebrow" data-anim="fade-up">How it works</span>
-  <h2 class="section-title" data-anim="fade-up" data-delay="100">Four steps.<br><em>One experience.</em></h2>
+  <h2 class="section-title" data-anim="fade-up" data-delay="100">Four steps.<br><em>Infinite range.</em></h2>
   <div class="steps">
     <div class="step" data-anim="fade-up" data-delay="0">
       <div class="step-num">01</div>
-      <h3 class="step-title">Describe your brand</h3>
-      <p class="step-sub">Your vibe, your style, your vision</p>
-      <p class="step-desc">No forms. No templates. Just tell Irie who you are.</p>
+      <h3 class="step-title">Set the feeling</h3>
+      <p class="step-sub">Emotion, audience, direction, pressure</p>
+      <p class="step-desc">Tell Irie what people should feel, what they should believe, and how hard the page should hit.</p>
     </div>
     <div class="step" data-anim="fade-up" data-delay="100">
       <div class="step-num">02</div>
-      <h3 class="step-title">AI builds your site</h3>
-      <p class="step-sub">Layout, motion, and experience generated instantly</p>
-      <p class="step-desc">Full website &mdash; design, copy, and flow &mdash; in seconds.</p>
+      <h3 class="step-title">Watch the blueprint form</h3>
+      <p class="step-sub">Story arc, design system, motion, persuasion</p>
+      <p class="step-desc">The engine plans the emotional journey before it renders a single section.</p>
     </div>
     <div class="step" data-anim="fade-up" data-delay="200">
       <div class="step-num">03</div>
-      <h3 class="step-title">Refine or collaborate</h3>
-      <p class="step-sub">Adjust or co-create with AI</p>
-      <p class="step-desc">Tweak anything until it feels exactly like your brand.</p>
+      <h3 class="step-title">Direct the next pass</h3>
+      <p class="step-sub">Push the hero. Shift trust. Raise spectacle.</p>
+      <p class="step-desc">Refine with creative notes, emotional controls, and section focus instead of starting over from zero.</p>
     </div>
     <div class="step" data-anim="fade-up" data-delay="300">
       <div class="step-num">04</div>
-      <h3 class="step-title">Go live</h3>
-      <p class="step-sub">Launch to your domain in one click</p>
-      <p class="step-desc">No developer. No delays. Your site is live and alive.</p>
+      <h3 class="step-title">Compare and carry forward</h3>
+      <p class="step-sub">Before, after, mobile, memory</p>
+      <p class="step-desc">Keep what works, judge what changed, and evolve the page like a real creative process.</p>
     </div>
   </div>
 </section>
 
 <!-- 5. MODES -->
 <section class="section">
-  <span class="section-eyebrow" data-anim="fade-up">Build your way</span>
-  <h2 class="section-title" data-anim="fade-up" data-delay="100">Three modes.<br><em>One creative vision.</em></h2>
+  <span class="section-eyebrow" data-anim="fade-up">Inside the engine</span>
+  <h2 class="section-title" data-anim="fade-up" data-delay="100">Three layers.<br><em>One living page.</em></h2>
   <div class="modes-grid">
-    <div class="mode-card" data-anim="scale-up" data-delay="0"><div class="mode-letter">A</div><p class="mode-name">Visionary Mode</p><h3 class="mode-title">You describe &mdash; Irie creates everything.</h3><p class="mode-desc">Tell us your vibe in plain language. The AI handles every decision. You approve. It goes live.</p></div>
-    <div class="mode-card" data-anim="scale-up" data-delay="100"><div class="mode-letter">B</div><p class="mode-name">Collaborator Mode</p><h3 class="mode-title">You and AI build together in real time.</h3><p class="mode-desc">See creative decisions happen live. Swap sections, shift the arc. The AI reasons with you &mdash; not just for you.</p></div>
-    <div class="mode-card" data-anim="scale-up" data-delay="200"><div class="mode-letter">C</div><p class="mode-name">Architect Mode</p><h3 class="mode-title">Full control with AI-assisted tools.</h3><p class="mode-desc">Define the structure, write the copy, direct the animations. The AI executes your exact vision.</p></div>
+    <div class="mode-card" data-anim="scale-up" data-delay="0"><div class="mode-letter">A</div><p class="mode-name">Direction Layer</p><h3 class="mode-title">Nike force. Apple restraint. Vercel clarity. Your voice.</h3><p class="mode-desc">Pull from strong design languages, blend them, and shape something original instead of inheriting a template.</p></div>
+    <div class="mode-card" data-anim="scale-up" data-delay="100"><div class="mode-letter">B</div><p class="mode-name">Psychology Layer</p><h3 class="mode-title">Desire, trust, tension, release &mdash; placed on purpose.</h3><p class="mode-desc">The page is sequenced to pull people deeper, answer hesitation at the right moment, and make action feel natural.</p></div>
+    <div class="mode-card" data-anim="scale-up" data-delay="200"><div class="mode-letter">C</div><p class="mode-name">Creative Memory</p><h3 class="mode-title">Critique it. Compare it. Keep what works.</h3><p class="mode-desc">Before-and-after passes, carry-forward locks, mobile checks, and self-critique turn generation into a real directing workflow.</p></div>
   </div>
 </section>
 
@@ -322,29 +340,29 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
   <span class="section-eyebrow" data-anim="fade-up">The difference</span>
   <h2 class="section-title" data-anim="fade-up" data-delay="100">Not another<br><em>website builder.</em></h2>
   <div class="diff-block" data-anim="fade" data-delay="200">
-    <p class="diff-text">Most platforms give you templates.<br><strong>Irie Builder gives you identity.</strong><br><br>This isn't about dragging blocks &mdash;<br>it's about building experiences people <strong>feel.</strong></p>
+    <p class="diff-text">Most platforms give you templates.<br><strong>Irie Builder gives you creative intelligence.</strong><br><br>This isn't about dragging blocks &mdash;<br>it's about building experiences people <strong>feel</strong>, remember, and want to stay inside.</p>
   </div>
 </section>
 
 <!-- 7. SOCIAL PROOF -->
 <section class="section">
-  <span class="section-eyebrow" data-anim="fade-up">Early momentum</span>
-  <h2 class="section-title" data-anim="fade-up" data-delay="100">Early creators are already<br><em>building with Irie.</em></h2>
+  <span class="section-eyebrow" data-anim="fade-up">What it can do now</span>
+  <h2 class="section-title" data-anim="fade-up" data-delay="100">Not just a page.<br><em>A full creative system.</em></h2>
   <div class="proof-grid">
     <div class="proof-item" data-anim="line-reveal" data-delay="0">
-      <span class="proof-badge">Beta</span>
-      <h3 class="proof-type">Streetwear Brand</h3>
-      <p class="proof-desc">Drop page with motion, storytelling, and brand voice &mdash; built in minutes.</p>
+      <span class="proof-badge">Blueprint</span>
+      <h3 class="proof-type">Plans before it builds</h3>
+      <p class="proof-desc">It maps the brand core, story arc, design system, motion language, and persuasion strategy before rendering the page.</p>
     </div>
     <div class="proof-item" data-anim="line-reveal" data-delay="100">
-      <span class="proof-badge">Beta</span>
-      <h3 class="proof-type">Local Restaurant</h3>
-      <p class="proof-desc">A full digital vibe &mdash; menu, atmosphere, and identity before customers walk in.</p>
+      <span class="proof-badge">Critique</span>
+      <h3 class="proof-type">Scores its own work</h3>
+      <p class="proof-desc">First impression, emotional clarity, trust timing, motion readiness, mobile impact, and conversion pressure are judged after every pass.</p>
     </div>
     <div class="proof-item" data-anim="line-reveal" data-delay="200">
-      <span class="proof-badge">Beta</span>
-      <h3 class="proof-type">Creator Landing Page</h3>
-      <p class="proof-desc">A living portfolio that moves, tells your story, and actually converts.</p>
+      <span class="proof-badge">Compare</span>
+      <h3 class="proof-type">Evolves like a real creative tool</h3>
+      <p class="proof-desc">Run passes, compare before and after, preview on mobile, and carry the strongest systems forward instead of losing the plot.</p>
     </div>
   </div>
 </section>
@@ -365,15 +383,16 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
 <section class="section-cta">
   <div class="cta-left" data-anim="split-left">
     <h2 class="cta-left-title">Be part of<br>the <em>first wave.</em></h2>
-    <p class="cta-left-body">Get early access to Irie Builder and start creating websites that actually feel like your brand.</p>
+    <p class="cta-left-body">Step into the dashboard or join the waitlist. Either way, you're stepping into a new kind of website builder.</p>
   </div>
   <div class="cta-right" data-anim="split-right">
-    <p class="cta-right-label">Join the waitlist</p>
+    <p class="cta-right-label">Build or join the waitlist</p>
     <form class="waitlist-form-2" id="ctaForm" onsubmit="handleSubmit(event,'ctaSuccess','cta')">
       <input type="email" class="waitlist-input-2" placeholder="your@email.com" required>
       <button type="submit" class="waitlist-btn-2">Join the Waitlist</button>
     </form>
     <div class="success-msg" id="ctaSuccess" style="max-width:100%">&#10003; &nbsp; You're in. We'll be in touch soon.</div>
+    <a href="https://www.iriebuilder.com/dashboard" class="hero-secondary-link" style="width:100%;justify-content:center">Go to Dashboard</a>
     <p class="cta-subtext">Limited early access spots available.</p>
   </div>
 </section>
@@ -381,6 +400,7 @@ footer{padding:2.5rem var(--pad);border-top:1px solid var(--border);display:flex
 <footer>
   <span class="footer-brand">Irie Builder</span>
   <div class="footer-links">
+    <a href="https://www.iriebuilder.com/dashboard" class="footer-link">Dashboard</a>
     <a href="https://irieswag.com" class="footer-link">Irie Swag</a>
     <a href="https://iriesuite.com" class="footer-link">Irie Suite</a>
     <a href="https://iriecommerce.com" class="footer-link">Irie Commerce</a>
