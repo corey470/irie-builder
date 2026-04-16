@@ -434,7 +434,8 @@ export default function DashboardPage() {
   const [previousGeneration, setPreviousGeneration] = useState<GenerationSnapshot | null>(null)
   const [generationHistory, setGenerationHistory] = useState<Array<{ label: string; verdict: string }>>([])
   const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
-  const [viewportMode, setViewportMode] = useState<'desktop' | 'mobile'>('desktop')
+  const [viewportMode, setViewportMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
+  const [railCollapsed, setRailCollapsed] = useState(false)
   const [decisions, setDecisions] = useState<CreativeDecision[]>([])
   const [visibleDecisions, setVisibleDecisions] = useState(0)
   const [genCount, setGenCount] = useState(0)
@@ -488,6 +489,28 @@ export default function DashboardPage() {
     }, 2500)
     return () => clearInterval(iv)
   }, [loading])
+
+  /* Restore rail collapsed state from localStorage on mount */
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return
+      if (window.localStorage.getItem('irie-builder-rail-collapsed') === 'true') {
+        setRailCollapsed(true)
+      }
+    } catch {}
+  }, [])
+
+  const toggleRailCollapsed = useCallback(() => {
+    setRailCollapsed(prev => {
+      const next = !prev
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('irie-builder-rail-collapsed', String(next))
+        }
+      } catch {}
+      return next
+    })
+  }, [])
 
   const writeIframeDocument = useCallback((iframe: HTMLIFrameElement | null, markup: string | null) => {
     if (!iframe || !markup) return
@@ -861,7 +884,7 @@ export default function DashboardPage() {
     <>
       <style>{dashboardCSS}</style>
 
-      <div className="db">
+      <div className={`db ${railCollapsed ? 'db--rail-collapsed' : ''}`}>
         {/* ── MOBILE NAV ── */}
         <nav className="db-mobile-nav">
           <button className={mobilePanel === 'form' ? 'active' : ''} onClick={() => setMobilePanel('form')}>Edit</button>
@@ -1219,12 +1242,29 @@ export default function DashboardPage() {
               <div className="db-preview-actions">
                 <button onClick={openFullScreen} className="db-action-btn">View Full Screen</button>
                 <button onClick={downloadHtml} className="db-action-btn">Download HTML</button>
-                <button
-                  onClick={() => setViewportMode(prev => prev === 'desktop' ? 'mobile' : 'desktop')}
-                  className="db-action-btn"
-                >
-                  {viewportMode === 'mobile' ? 'Desktop View' : 'Mobile View'}
-                </button>
+                <div className="db-viewport-toggle" role="group" aria-label="Preview viewport">
+                  <button
+                    type="button"
+                    onClick={() => setViewportMode('mobile')}
+                    className={`pill ${viewportMode === 'mobile' ? 'pill--active' : ''}`}
+                  >
+                    Mobile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewportMode('tablet')}
+                    className={`pill ${viewportMode === 'tablet' ? 'pill--active' : ''}`}
+                  >
+                    Tablet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewportMode('desktop')}
+                    className={`pill ${viewportMode === 'desktop' ? 'pill--active' : ''}`}
+                  >
+                    Desktop
+                  </button>
+                </div>
                 {previousGeneration && (
                   <button
                     onClick={() => setPreviewMode(prev => prev === 'current' ? 'before-after' : 'current')}
@@ -1238,7 +1278,7 @@ export default function DashboardPage() {
               </div>
               {previewMode === 'before-after' && previousGeneration ? (
                 <div className="db-compare">
-                  <div className={`db-compare-panel ${viewportMode === 'mobile' ? 'db-compare-panel--mobile' : ''}`}>
+                  <div className={`db-compare-panel db-compare-panel--${viewportMode}`}>
                     <div className="db-compare-label">Before</div>
                     <iframe
                       ref={previousIframeRef}
@@ -1248,7 +1288,7 @@ export default function DashboardPage() {
                       onLoad={onPreviousIframeLoad}
                     />
                   </div>
-                  <div className={`db-compare-panel ${viewportMode === 'mobile' ? 'db-compare-panel--mobile' : ''}`}>
+                  <div className={`db-compare-panel db-compare-panel--${viewportMode}`}>
                     <div className="db-compare-label">After</div>
                     <iframe
                       ref={iframeRef}
@@ -1260,7 +1300,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ) : (
-                <div className={`db-single-preview ${viewportMode === 'mobile' ? 'db-single-preview--mobile' : ''}`}>
+                <div className={`db-single-preview db-single-preview--${viewportMode}`}>
                   {viewportMode === 'desktop' ? (
                     <div className="db-stage-layout">
                       <div className="db-desktop-stage">
@@ -1311,9 +1351,33 @@ export default function DashboardPage() {
           )}
         </main>
 
+        {/* Floating expand tab — visible only when rail is collapsed */}
+        {railCollapsed && (
+          <button
+            type="button"
+            className="db-rail-expand"
+            onClick={toggleRailCollapsed}
+            aria-label="Expand Creative Decisions rail"
+            title="Expand Creative Decisions"
+          >
+            {'\u2039'}
+          </button>
+        )}
+
         {/* ══════════════ RIGHT PANEL — CREATIVE DECISIONS ══════════════ */}
         <aside className={`db-panel db-log ${mobilePanel === 'log' ? 'db-panel--active' : ''}`}>
-          <h2 className="db-log-title">Creative Decisions</h2>
+          <div className="db-rail-head">
+            <h2 className="db-log-title">Creative Decisions</h2>
+            <button
+              type="button"
+              className="db-rail-toggle"
+              onClick={toggleRailCollapsed}
+              aria-label="Collapse Creative Decisions rail"
+              title="Collapse"
+            >
+              {'\u2039'}
+            </button>
+          </div>
           <p className="db-log-sub">Blueprint, critique, compare, and carry-forward all live here.</p>
 
           {blueprint && (
@@ -1505,7 +1569,8 @@ const dashboardCSS = `
   body{font-family:'Syne',system-ui,sans-serif;background:var(--black);color:var(--text);overflow:hidden;height:100dvh}
 
   /* ── LAYOUT ── */
-  .db{display:grid;grid-template-columns:400px 1fr 340px;height:100dvh}
+  .db{display:grid;grid-template-columns:400px 1fr 220px;height:100dvh;position:relative;transition:grid-template-columns 200ms ease}
+  .db--rail-collapsed{grid-template-columns:400px 1fr 0}
   .db-panel{overflow-y:auto;height:100%}
 
   /* ── MOBILE NAV ── */
@@ -1658,11 +1723,15 @@ const dashboardCSS = `
   .db-action-btn:hover{border-color:var(--gold);color:var(--gold)}
   .db-back-btn{display:none}
   .db-compare{display:grid;grid-template-columns:1fr 1fr;gap:1px;flex:1;background:var(--border)}
-  .db-compare-panel{display:flex;flex-direction:column;min-height:0;background:var(--black)}
+  .db-compare-panel{display:flex;flex-direction:column;min-height:0;background:var(--black);transition:max-width 200ms ease}
   .db-compare-panel--mobile{max-width:420px;width:100%;margin:0 auto;background:#050505}
+  .db-compare-panel--tablet{max-width:768px;width:100%;margin:0 auto;background:#050505}
+  .db-compare-panel--desktop{max-width:none}
   .db-compare-label{padding:8px 12px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);background:var(--surface)}
-  .db-single-preview{flex:1;display:flex;background:var(--black)}
+  .db-single-preview{flex:1;display:flex;background:var(--black);transition:max-width 200ms ease}
   .db-single-preview--mobile{max-width:430px;width:100%;margin:0 auto;background:#050505;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .db-single-preview--tablet{max-width:768px;width:100%;margin:0 auto;background:#050505;border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .db-single-preview--desktop{max-width:none}
   .db-stage-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;flex:1;padding:18px}
   .db-desktop-stage{min-height:0;border:1px solid rgba(201,168,76,0.12);border-radius:18px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,0.42)}
   .db-device-rail{display:flex;flex-direction:column;gap:14px}
@@ -1680,10 +1749,20 @@ const dashboardCSS = `
   .db-device-note p{font-size:12px;line-height:1.6;color:rgba(242,237,228,0.66)}
   .db-iframe{flex:1;width:100%;border:none;background:white}
 
+  /* ── VIEWPORT TOGGLE (Mobile | Tablet | Desktop) ── */
+  .db-viewport-toggle{display:inline-flex;gap:4px;align-items:center}
+
   /* ── RIGHT: CREATIVE DECISIONS ── */
-  .db-log{background:var(--surface);border-left:1px solid var(--border);padding:28px 20px}
-  .db-log-title{font-family:'Playfair Display',Georgia,serif;font-size:18px;font-weight:700;margin-bottom:20px}
-  .db-log-sub{font-size:12px;line-height:1.6;color:rgba(242,237,228,0.58);margin:-10px 0 20px}
+  .db-log{background:var(--surface);border-left:1px solid var(--border);padding:24px 14px;overflow-x:hidden;transition:padding 200ms ease,opacity 200ms ease}
+  .db--rail-collapsed .db-log{padding-left:0;padding-right:0;border-left:none;opacity:0;pointer-events:none}
+  .db-rail-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
+  .db-rail-head .db-log-title{margin-bottom:0}
+  .db-rail-toggle{width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:1px solid var(--border);border-radius:var(--radius);background:transparent;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color 0.2s,border-color 0.2s}
+  .db-rail-toggle:hover{color:var(--gold);border-color:var(--gold)}
+  .db-rail-expand{position:absolute;top:80px;right:0;z-index:20;width:24px;height:56px;padding:0;border:1px solid var(--border);border-right:none;border-radius:var(--radius) 0 0 var(--radius);background:var(--surface);color:var(--gold);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transform:rotate(180deg);transition:border-color 0.2s,color 0.2s}
+  .db-rail-expand:hover{border-color:var(--gold);color:var(--text)}
+  .db-log-title{font-family:'Playfair Display',Georgia,serif;font-size:16px;font-weight:700;margin-bottom:16px}
+  .db-log-sub{font-size:11px;line-height:1.55;color:rgba(242,237,228,0.58);margin:0 0 18px}
   .db-blueprint{display:flex;flex-direction:column;gap:14px;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
   .db-blueprint-block{display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--border);border-radius:var(--radius);background:#0d0d0d}
   .db-blueprint-step{display:flex;flex-direction:column;gap:2px;padding-top:8px;margin-top:8px;border-top:1px solid rgba(201,168,76,0.08)}
@@ -1718,7 +1797,9 @@ const dashboardCSS = `
   /* ── RESPONSIVE ── */
   @media(max-width:1200px){
     .db{grid-template-columns:360px 1fr 0}
+    .db--rail-collapsed{grid-template-columns:360px 1fr 0}
     .db-log{display:none}
+    .db-rail-expand{display:none}
     .db-stage-layout{grid-template-columns:1fr}
     .db-device-rail{display:none}
   }
