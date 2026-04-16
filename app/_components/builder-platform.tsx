@@ -1226,6 +1226,10 @@ export function BriefPage() {
     }, 100)
   }
 
+  function closeConversation() {
+    setBrief(prev => ({ ...prev, chatExpanded: false }))
+  }
+
   function submitAnswer() {
     const answer = brief.inputValue.trim()
     if (!answer && brief.currentStep !== 4) return
@@ -1281,7 +1285,7 @@ export function BriefPage() {
       primary: preset.colors.primary,
       accent: preset.colors.accent,
       background: preset.colors.background,
-      chatExpanded: true,
+      chatExpanded: false,
       messages: [...messages, { role: 'ai', text: 'Preset loaded. Adjust the brief and hit Build It when you are ready.' }],
       answers: [...preset.answers],
       currentStep: CHAT_QUESTIONS.length,
@@ -1369,7 +1373,6 @@ export function BriefPage() {
           <section className="platform-section-card platform-section-card--presets">
             <div className="platform-section-head">
               <span className="platform-kicker">Presets</span>
-              <h2>Quick starts</h2>
             </div>
             <div className="platform-chip-grid">
               {PRESETS.map(preset => (
@@ -1388,7 +1391,6 @@ export function BriefPage() {
           <section className="platform-section-card platform-section-card--vision">
             <div className="platform-section-head">
               <span className="platform-kicker">Your Vision</span>
-              <h2>Words + pressure</h2>
             </div>
             <textarea
               className="platform-textarea platform-textarea--hero"
@@ -1420,7 +1422,6 @@ export function BriefPage() {
           <section className="platform-section-card platform-section-card--clone">
             <div className="platform-section-head">
               <span className="platform-kicker">Clone a Site</span>
-              <h2>Pull in structure and vibe</h2>
             </div>
             <div
               className="platform-clone-dropzone"
@@ -1609,10 +1610,12 @@ export function BriefPage() {
           </section>
 
           {brief.chatExpanded ? (
-            <section ref={conversationRef} className="platform-section-card">
-              <div className="platform-section-head">
+            <section ref={conversationRef} className="platform-section-card platform-section-card--conversation">
+              <div className="platform-section-head platform-section-head--compact">
                 <span className="platform-kicker">Conversation</span>
-                <h2>Guide the brief in chat</h2>
+                <button type="button" className="platform-close-btn" onClick={closeConversation} aria-label="Close conversation">
+                  ✕
+                </button>
               </div>
               <div className="platform-chat">
                 <div className="platform-chat-messages">
@@ -2574,6 +2577,14 @@ const platformCss = `
     gap:1.25rem;
   }
 
+  .platform-page--brief{
+    width:100%;
+    max-width:860px;
+    margin:0 auto;
+    padding:1.5rem 24px 3rem;
+    box-sizing:border-box;
+  }
+
   .platform-page--generate{
     display:grid;
     grid-template-columns:280px minmax(0,1fr) 220px;
@@ -2710,6 +2721,14 @@ const platformCss = `
 
   .platform-section-head{
     margin-bottom:1rem;
+  }
+
+  .platform-section-head--compact{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.8rem;
+    margin-bottom:0.75rem;
   }
 
   .platform-section-head h2,
@@ -2901,6 +2920,21 @@ const platformCss = `
     gap:0.75rem;
     padding:1rem 0 3rem;
     justify-items:start;
+  }
+
+  .platform-close-btn{
+    border:none;
+    background:none;
+    color:var(--muted-2);
+    padding:0.1rem;
+    font:inherit;
+    font-size:0.88rem;
+    line-height:1;
+    cursor:pointer;
+  }
+
+  .platform-close-btn:hover{
+    color:var(--gold);
   }
 
   .platform-chat{
@@ -3686,6 +3720,47 @@ const platformCss = `
     opacity:0.82;
   }
 
+  .platform-page--brief .platform-section-card{
+    padding:16px 20px;
+  }
+
+  .platform-page--brief .platform-section-head{
+    margin-bottom:0.8rem;
+  }
+
+  .platform-page--brief .platform-accordion-toggle{
+    padding:16px 20px;
+  }
+
+  .platform-page--brief .platform-accordion-body{
+    padding:0 20px 16px;
+  }
+
+  .platform-page--brief .platform-build-card{
+    padding:0.8rem 0 2rem;
+  }
+
+  .platform-page--brief .platform-slider-grid--compact{
+    margin-top:0.8rem;
+  }
+
+  .platform-page--brief .platform-slider--compact{
+    padding:0.75rem 0.85rem;
+  }
+
+  .platform-page--brief .platform-clone-dropzone{
+    padding:0.9rem;
+  }
+
+  .platform-page--brief .platform-section-card--conversation{
+    max-height:300px;
+    overflow-y:auto;
+  }
+
+  .platform-page--brief .platform-chat-messages{
+    max-height:160px;
+  }
+
   @media (max-width: 1200px){
     .platform-page--generate,
     .platform-page--generate.platform-page--rail-collapsed{
@@ -3726,6 +3801,12 @@ const platformCss = `
 
     .platform-page{
       width:min(100%, calc(100% - 1rem));
+    }
+
+    .platform-page--brief{
+      width:100%;
+      max-width:860px;
+      padding:1.5rem 24px 3rem;
     }
 
     .platform-clone-input-row{
