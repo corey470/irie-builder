@@ -101,6 +101,7 @@ export type Database = {
       }
       builder_projects: {
         Row: {
+          brief_json: Json
           commerce_tenant_id: string | null
           created_at: string
           current_generation_id: string | null
@@ -111,6 +112,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          brief_json?: Json
           commerce_tenant_id?: string | null
           created_at?: string
           current_generation_id?: string | null
@@ -121,6 +123,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          brief_json?: Json
           commerce_tenant_id?: string | null
           created_at?: string
           current_generation_id?: string | null
