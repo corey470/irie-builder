@@ -3987,4 +3987,127 @@ const platformCss = `
       align-items:stretch;
     }
   }
+
+  @media (max-width: 480px){
+    /* iOS zoom prevention. .platform-input / .platform-textarea use font:inherit
+       which can erase the globals.css max(16px, 1rem) safeguard — pin it here. */
+    .platform-input,
+    .platform-textarea{
+      font-size:16px;
+    }
+
+    /* Brief page — accordion rows, pills, flow indicator, sticky CTA */
+    .platform-accordion-toggle{
+      min-height:44px;
+    }
+
+    .platform-chip-grid,
+    .platform-pill-row{
+      flex-wrap:nowrap;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      padding-bottom:0.5rem;
+      scroll-snap-type:x proximity;
+    }
+    .platform-chip-grid > *,
+    .platform-pill-row > *{
+      flex:0 0 auto;
+      scroll-snap-align:start;
+    }
+
+    .platform-flow-indicator{
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      white-space:nowrap;
+      scrollbar-width:none;
+    }
+    .platform-flow-indicator::-webkit-scrollbar{
+      display:none;
+    }
+
+    .platform-page--brief .platform-build-card--sticky{
+      bottom:0;
+      margin-left:-20px;
+      margin-right:-20px;
+      border-radius:0;
+      border-left:none;
+      border-right:none;
+      padding-left:20px;
+      padding-right:20px;
+      padding-bottom:calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+    .platform-page--brief .platform-build-card--sticky .platform-primary-btn{
+      width:100%;
+      min-height:48px;
+    }
+
+    /* Generate page — stack order: preview first, then agents, then decisions.
+       Preview iframe fills the viewport width with no side padding. */
+    .platform-page--generate .platform-editor-preview,
+    .platform-page--generate .platform-desktop-preview{
+      order:1;
+    }
+    .platform-page--generate .platform-agent-panel{
+      order:2;
+    }
+    .platform-page--generate .platform-decisions-rail{
+      order:3;
+    }
+    .platform-page--generate .platform-preview-frame{
+      margin-left:-20px;
+      margin-right:-20px;
+      width:calc(100% + 40px);
+      border-radius:0;
+    }
+
+    /* Edit page — stack sidebar under iframe + subtle desktop nudge via ::before
+       so we don't change the DOM. Existing text / accent edits still work. */
+    .platform-editor-layout{
+      display:flex;
+      flex-direction:column;
+    }
+    .platform-editor-layout::before{
+      content:"Best edited on desktop. Text and color tweaks still work here.";
+      order:0;
+      display:block;
+      padding:0.75rem 1rem;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:var(--gold-soft);
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+      letter-spacing:0.02em;
+    }
+    .platform-editor-preview{
+      order:1;
+      min-height:360px;
+    }
+    .platform-editor-sidebar{
+      order:2;
+    }
+    .platform-editor-item{
+      min-height:44px;
+    }
+    .platform-color-card--editor{
+      min-height:48px;
+    }
+    .platform-color-card--editor input[type="color"]{
+      width:44px;
+      height:44px;
+    }
+
+    /* Publish page — stacked actions, scrollable code block */
+    .platform-publish-actions{
+      flex-direction:column;
+      align-items:stretch;
+    }
+    .platform-publish-actions > *{
+      width:100%;
+    }
+    .platform-code-card{
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+  }
 `
