@@ -35,8 +35,8 @@ HARD RULES:
 10. Every image uses a real URL from the prompt. Never empty src.
 11. Every section has real content. No placeholders.
 12. Proof section lands directly before the final CTA section.
-13. Exactly ONE <p class="eyebrow"> line in the hero section. Never duplicate it.
-14. Never emit placeholder text like "Your Brand", "Your Name", "Your Restaurant", or "Your Event". Use the actual brand name from the brief. If none is supplied, derive a short one from the vision prompt.
+13. Exactly ONE <p class="eyebrow"> line in the hero section. One eyebrow line only in the hero section. Never duplicate it.
+14. Never emit placeholder text like "Your Brand", "Your Name", "Your Restaurant", or "Your Event". Never use placeholder text like "Your Brand". Use the actual brand name from the brief. If no name is provided, derive a short name from the vision prompt.
 
 DESKTOP LAYOUT (required):
 - All content containers use max-width: 1200px; margin: 0 auto; with padding: 0 clamp(1rem, 5vw, 3rem).
@@ -78,7 +78,7 @@ export async function runAssembler(
   })
   const resolvedBrand = resolveBrandName(brief)
   if (!html || html.length < 200) {
-    return sanitizePlaceholders(buildFallbackHtml(brief, agents), resolvedBrand)
+    return finalizeHtml(buildFallbackHtml(brief, agents), resolvedBrand)
   }
   const cleaned = html.replace(/^```html?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim()
   // Reject truncated output — if Haiku ran out of tokens mid-generation we
@@ -86,9 +86,9 @@ export async function runAssembler(
   // a broken page missing its content section.
   if (!cleaned.includes('<body') || !/<\/html>\s*$/.test(cleaned)) {
     console.warn('[assembler] output looked truncated, using fallback')
-    return sanitizePlaceholders(buildFallbackHtml(brief, agents), resolvedBrand)
+    return finalizeHtml(buildFallbackHtml(brief, agents), resolvedBrand)
   }
-  return sanitizePlaceholders(cleaned, resolvedBrand)
+  return finalizeHtml(cleaned, resolvedBrand)
 }
 
 function resolveBrandName(brief: BriefInput): string {
@@ -385,8 +385,24 @@ function buildMarqueeKeywords(emotional: string, tone: string): string[] {
 function inferBrandFromVibe(text: string): string {
   // When no brand name is provided, try a short ownable-feeling noun
   // derived from the vibe. Falls through to 'Untitled' if nothing fits.
-  const m = text.match(/\b([A-Z][a-z]{3,12})\b/)
-  return m ? m[1] : ''
+  const titleCaseMatch = text.match(/\b([A-Z][A-Za-z0-9'&-]{2,15}(?:\s+[A-Z][A-Za-z0-9'&-]{2,15}){0,2})\b/)
+  if (titleCaseMatch && !isPlaceholderName(titleCaseMatch[1])) return titleCaseMatch[1].trim()
+
+  const stopWords = new Set([
+    'a', 'an', 'and', 'at', 'be', 'but', 'by', 'for', 'from', 'if', 'in', 'into',
+    'is', 'it', 'its', 'of', 'on', 'or', 'so', 'that', 'the', 'their', 'this',
+    'to', 'up', 'we', 'with', 'you', 'your',
+  ])
+  const tokens = text
+    .replace(/[^a-zA-Z0-9'&-]+/g, ' ')
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(token => token.length >= 3 && !stopWords.has(token.toLowerCase()))
+
+  return tokens
+    .slice(0, 3)
+    .map(token => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(' ')
 }
 
 /**
@@ -411,4 +427,59 @@ function isPlaceholderName(name: string | undefined): boolean {
 function sanitizePlaceholders(html: string, brand: string): string {
   const safe = brand || 'Untitled'
   return html.replace(/\bYour\s+(Brand|Name|Restaurant|Event|Shop|Company|Business)\b/gi, safe)
+}
+
+function finalizeHtml(html: string, brand: string): string {
+  const safeBrand = brand || 'Untitled'
+  return ensureHeroDesktopGuardrails(enforceSingleHeroEyebrow(sanitizePlaceholders(html, safeBrand), safeBrand))
+}
+
+function enforceSingleHeroEyebrow(html: string, brand: string): string {
+  return html.replace(
+    /(<section\b[^>]*class=["'][^"']*\bhero\b[^"']*["'][^>]*>)([\s\S]*?)(<\/section>)/i,
+    (_match, open, inner, close) => {
+      const eyebrowPattern = /<p\b[^>]*class=["'][^"']*\beyebrow\b[^"']*["'][^>]*>[\s\S]*?<\/p>/gi
+      const eyebrows = inner.match(eyebrowPattern) || []
+      const heroEyebrow = `<p class="eyebrow">${brand}</p>`
+
+      if (eyebrows.length === 0) {
+        if (/<div\b[^>]*class=["'][^"']*\bwrap\b[^"']*["'][^>]*>/i.test(inner)) {
+          return `${open}${inner.replace(/(<div\b[^>]*class=["'][^"']*\bwrap\b[^"']*["'][^>]*>)/i, `$1\n${heroEyebrow}`)}${close}`
+        }
+        return `${open}\n${heroEyebrow}${inner}${close}`
+      }
+
+      let kept = false
+      const deduped = inner.replace(eyebrowPattern, () => {
+        if (kept) return ''
+        kept = true
+        return heroEyebrow
+      })
+      return `${open}${deduped}${close}`
+    },
+  )
+}
+
+function ensureHeroDesktopGuardrails(html: string): string {
+  const patch = `
+/* irie-assembler-desktop-guardrails */
+.hero{min-height:100vh;display:flex;align-items:center;position:relative}
+.hero .wrap,.section .wrap,footer .wrap{width:min(100%,1200px);max-width:1200px;margin:0 auto;padding:0 clamp(1rem,5vw,3rem)}
+.hero .wrap{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:0}
+.hero .wrap > *{display:block}
+.hero h1{font-size:clamp(3rem,5vw,7rem)}
+.eyebrow{font-size:0.75rem;letter-spacing:0.2em;text-transform:uppercase}
+@media (min-width:1024px){
+  .hero{min-height:100vh}
+  .hero .wrap{width:min(100%,1200px)}
+}`
+
+  if (html.includes('irie-assembler-desktop-guardrails')) return html
+  if (/<style\b[^>]*>/i.test(html)) {
+    return html.replace(/<\/style>/i, `${patch}\n</style>`)
+  }
+  if (/<\/head>/i.test(html)) {
+    return html.replace(/<\/head>/i, `<style>${patch}\n</style>\n</head>`)
+  }
+  return html
 }
