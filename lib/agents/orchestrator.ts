@@ -57,8 +57,12 @@ export interface OrchestratorResult {
   payload: CompletePayload
 }
 
+const TOTAL_BUDGET_MS = 55000 // Vercel wall is 60s — stop 5s early so we always emit `complete`.
+
 export async function runOrchestrator(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { requestId, brief, onEvent } = input
+  const startedAt = Date.now()
+  const budgetLeft = () => TOTAL_BUDGET_MS - (Date.now() - startedAt)
 
   // All agents start as "waiting" so the UI can render the full roster.
   for (const a of VISIBLE_AGENTS) {
@@ -153,15 +157,25 @@ export async function runOrchestrator(input: OrchestratorInput): Promise<Orchest
   html = postProcessHtml(html)
 
   // ── Stage 5: Critic ──────────────────────────
-  emit(onEvent, requestId, 'critic', 'working')
+  // Skip the Critic entirely if we're too close to the Vercel wall — we'd
+  // rather emit a complete payload with a fallback verdict than time out
+  // the whole function and leave the dashboard stuck.
   let critic
-  try {
-    critic = await runCritic(html, agentOutputs)
-    emit(onEvent, requestId, 'critic', 'done')
-  } catch (err) {
-    console.error('[orchestrator] critic threw:', err)
-    critic = criticFallback()
+  const remaining = budgetLeft()
+  if (remaining < 6000) {
     emit(onEvent, requestId, 'critic', 'failed')
+    console.warn(`[orchestrator] skipping critic — only ${remaining}ms budget left`)
+    critic = criticFallback()
+  } else {
+    emit(onEvent, requestId, 'critic', 'working')
+    try {
+      critic = await runCritic(html, agentOutputs)
+      emit(onEvent, requestId, 'critic', 'done')
+    } catch (err) {
+      console.error('[orchestrator] critic threw:', err)
+      critic = criticFallback()
+      emit(onEvent, requestId, 'critic', 'failed')
+    }
   }
 
   // Build the complete payload in the shape the dashboard already expects
