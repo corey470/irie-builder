@@ -59,8 +59,8 @@ Score this honestly. If anything is generic, say so in the recommendations.`
     model: MODELS.haiku,
     system: SYSTEM,
     user,
-    maxTokens: 700,
-    timeoutMs: 15000,
+    maxTokens: 500,
+    timeoutMs: 8000,
     label: 'critic',
   })
   if (!out || !out.scores) return criticFallback()

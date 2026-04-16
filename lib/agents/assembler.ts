@@ -1,5 +1,4 @@
 import { callTextAgent, MODELS } from './anthropic'
-import { loadReferenceDocs } from './md-loader'
 import type { BriefInput, AgentOutputs } from './types'
 
 /**
@@ -13,8 +12,11 @@ import type { BriefInput, AgentOutputs } from './types'
  */
 
 function buildSystem(): string {
-  const { psychology, design } = loadReferenceDocs()
-  return `You are the Assembler for Irie Builder. All creative decisions have already been made by other agents (Creative Director, Brand Voice, Psychology Director, Art Director, Motion Director, Mobile Director). Your job is EXECUTION only — build exactly what they specified.
+  // The upstream agents (Psychology Director, Art Director, Motion Director)
+  // have already encoded the PSYCHOLOGY.md and DESIGN.md rules into typed
+  // decisions — injecting the raw markdown here is dead weight that slows
+  // the function past Vercel's 60s wall. The Assembler is execution only.
+  return `You are the Assembler for Irie Builder. All creative decisions have already been made by other agents. Your job is EXECUTION only — build exactly what they specified.
 
 Output: complete, self-contained HTML. Inline <style> and <script>. Google Fonts <link> in <head> is allowed — no other external assets except images supplied in the prompt.
 
@@ -32,27 +34,16 @@ HARD RULES:
 11. Every section has real content — never placeholder text.
 12. Put proof directly before the final CTA (placement decided by Psychology Director).
 
-At the top of the HTML, include this comment block with the agent attributions:
+At the top of the HTML, include a comment block:
 <!-- CREATIVE DECISIONS
 Typography: [displayFont + bodyFont] — [pairing note]
-Color system: [canvas + accent + text] — [notes]
-Motion personality: [intensity + transitionStyle] — [revealBehavior]
-Atmosphere: [atmosphereSummary]
+Color system: [canvas + accent + text]
+Motion personality: [intensity + transitionStyle]
 Sections: [section order]
-Section headings: [actual hero + section headings in order]
-Unexpected detail: [one specific atmospheric choice]
-Brand voice: [toneProfile]
-Hero treatment: [one sentence on how the hero is built]
-Overall direction: [overallDirection from Creative Director]
+Overall direction: [overallDirection]
 -->
 
 End with: <!-- Built with Irie Builder — There's no perfect website. Only one that feels right to you. -->
-
-Psychology layer (must shape structure and copy):
-${psychology}
-
-Design system reference:
-${design}
 
 OUTPUT: ONLY complete HTML. No markdown. No backticks. No explanation.`
 }
@@ -62,12 +53,16 @@ export async function runAssembler(
   agents: AgentOutputs,
 ): Promise<string> {
   const user = buildUserPrompt(brief, agents)
+  // Haiku is the right fit for execution-only work: it's ~3x faster than
+  // Sonnet for the same token budget, which keeps us inside the 60s Vercel
+  // wall after the upstream agents have already spent ~20-25s. Creativity
+  // lives upstream; this role is just wiring decisions into HTML.
   const html = await callTextAgent({
-    model: MODELS.sonnet,
+    model: MODELS.haiku,
     system: buildSystem(),
     user,
-    maxTokens: 8000,
-    timeoutMs: 50000,
+    maxTokens: 6000,
+    timeoutMs: 32000,
     label: 'assembler',
   })
   if (!html || html.length < 200) {
