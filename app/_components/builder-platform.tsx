@@ -640,12 +640,19 @@ interface EditableTextItem {
   tagName: string
   label: string
   text: string
+  isAction: boolean
+  kind: 'headline' | 'subheadline' | 'cta' | 'heading' | 'body'
+  sectionId: string
+  sectionLabel: string
+  baseStyle: EditableTextStyle
 }
 
 interface EditableImageItem {
   id: string
   label: string
   src: string
+  sectionId: string
+  sectionLabel: string
 }
 
 interface EditableDocumentModel {
@@ -654,6 +661,49 @@ interface EditableDocumentModel {
   textItems: EditableTextItem[]
   imageItems: EditableImageItem[]
 }
+
+interface EditableTextStyle {
+  [key: string]: string
+  fontFamily: string
+  fontSize: string
+  fontWeight: string
+  lineHeight: string
+  letterSpacing: string
+  color: string
+  textAlign: string
+  textTransform: string
+  backgroundColor: string
+  borderColor: string
+  borderRadius: string
+  paddingInline: string
+  paddingBlock: string
+  boxShadow: string
+}
+
+const DEFAULT_TEXT_STYLE: EditableTextStyle = {
+  fontFamily: '',
+  fontSize: '',
+  fontWeight: '',
+  lineHeight: '',
+  letterSpacing: '',
+  color: '',
+  textAlign: '',
+  textTransform: '',
+  backgroundColor: '',
+  borderColor: '',
+  borderRadius: '',
+  paddingInline: '',
+  paddingBlock: '',
+  boxShadow: '',
+}
+
+const FONT_FAMILY_OPTIONS = [
+  { value: "'Playfair Display', serif", label: 'Playfair Display' },
+  { value: "'Syne', sans-serif", label: 'Syne' },
+  { value: "system-ui, sans-serif", label: 'System Sans' },
+] as const
+
+type InspectorTab = 'content' | 'style' | 'layout'
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -672,33 +722,217 @@ function labelTextElement(tagName: string, index: number, text: string) {
   return `Body Copy ${index + 1}`
 }
 
+function classifyTextElement(tagName: string, index: number, text: string): EditableTextItem['kind'] {
+  if (tagName === 'h1') return 'headline'
+  if (tagName === 'p' && index === 0) return 'subheadline'
+  if (tagName === 'button' || (tagName === 'a' && text.length <= 32)) return 'cta'
+  if (tagName === 'h2' || tagName === 'h3') return 'heading'
+  return 'body'
+}
+
+function isActionElement(tagName: string, text: string) {
+  return tagName === 'button' || (tagName === 'a' && text.length <= 32)
+}
+
+function humanizeSectionTag(tagName: string) {
+  switch (tagName) {
+    case 'header':
+      return 'Hero'
+    case 'main':
+      return 'Main'
+    case 'footer':
+      return 'Footer'
+    case 'nav':
+      return 'Navigation'
+    case 'section':
+      return 'Section'
+    case 'article':
+      return 'Story Block'
+    default:
+      return 'Canvas'
+  }
+}
+
+function buildSectionMeta(doc: Document) {
+  const sectionMap = new Map<Element, { id: string; label: string }>()
+  const counters = new Map<string, number>()
+  const candidates = Array.from(doc.querySelectorAll('header, main, section, article, footer, nav'))
+
+  candidates.forEach(node => {
+    const tagName = node.tagName.toLowerCase()
+    const nextCount = (counters.get(tagName) || 0) + 1
+    counters.set(tagName, nextCount)
+    const baseLabel = humanizeSectionTag(tagName)
+    const label = tagName === 'section' || tagName === 'article'
+      ? `${baseLabel} ${nextCount}`
+      : nextCount > 1 ? `${baseLabel} ${nextCount}` : baseLabel
+    sectionMap.set(node, {
+      id: `${tagName}-${nextCount}`,
+      label,
+    })
+  })
+
+  return sectionMap
+}
+
+function resolveSectionMeta(
+  element: Element,
+  sectionMap: Map<Element, { id: string; label: string }>,
+) {
+  const ancestor = element.closest('header, main, section, article, footer, nav')
+  if (!ancestor) {
+    return { id: 'canvas-1', label: 'Canvas' }
+  }
+  return sectionMap.get(ancestor) || { id: 'canvas-1', label: 'Canvas' }
+}
+
+function rgbChannelToHex(channel: string) {
+  const value = Number.parseInt(channel, 10)
+  if (Number.isNaN(value)) return '00'
+  return Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0')
+}
+
+function toHexColor(value: string) {
+  const normalized = value.trim()
+  if (!normalized) return ''
+  if (normalized.startsWith('#')) {
+    if (normalized.length === 4) {
+      return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`.toUpperCase()
+    }
+    return normalized.toUpperCase()
+  }
+  const match = normalized.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i)
+  if (!match) return ''
+  return `#${rgbChannelToHex(match[1])}${rgbChannelToHex(match[2])}${rgbChannelToHex(match[3])}`.toUpperCase()
+}
+
+function normalizeFontFamily(value: string) {
+  if (value.includes('Playfair Display')) return "'Playfair Display', serif"
+  if (value.includes('Syne')) return "'Syne', sans-serif"
+  if (value.includes('system-ui')) return 'system-ui, sans-serif'
+  return value
+}
+
+function normalizeComputedTextStyle(style: CSSStyleDeclaration): EditableTextStyle {
+  return {
+    fontFamily: normalizeFontFamily(style.fontFamily || ''),
+    fontSize: style.fontSize || '',
+    fontWeight: style.fontWeight || '',
+    lineHeight: style.lineHeight === 'normal' ? '' : style.lineHeight || '',
+    letterSpacing: style.letterSpacing === 'normal' ? '' : style.letterSpacing || '',
+    color: toHexColor(style.color),
+    textAlign: style.textAlign || '',
+    textTransform: style.textTransform || '',
+    backgroundColor: toHexColor(style.backgroundColor),
+    borderColor: toHexColor(style.borderColor),
+    borderRadius: style.borderRadius || '',
+    paddingInline: style.paddingLeft === style.paddingRight ? style.paddingLeft || '' : '',
+    paddingBlock: style.paddingTop === style.paddingBottom ? style.paddingTop || '' : '',
+    boxShadow: style.boxShadow === 'none' ? '' : style.boxShadow || '',
+  }
+}
+
+function extractEditableTextStyles(doc: Document): Record<string, EditableTextStyle> {
+  const next: Record<string, EditableTextStyle> = {}
+  doc.querySelectorAll('[data-irie-edit-id]').forEach(node => {
+    const id = node.getAttribute('data-irie-edit-id')
+    if (!id || !(node instanceof HTMLElement)) return
+    next[id] = normalizeComputedTextStyle(window.getComputedStyle(node))
+  })
+  return next
+}
+
+function applyTextStyleToElement(node: Element, style: EditableTextStyle) {
+  if (!(node instanceof HTMLElement)) return
+  node.style.fontFamily = style.fontFamily || ''
+  node.style.fontSize = style.fontSize || ''
+  node.style.fontWeight = style.fontWeight || ''
+  node.style.lineHeight = style.lineHeight || ''
+  node.style.letterSpacing = style.letterSpacing || ''
+  node.style.color = style.color || ''
+  node.style.textAlign = style.textAlign || ''
+  node.style.textTransform = style.textTransform || ''
+  node.style.backgroundColor = style.backgroundColor || ''
+  node.style.borderColor = style.borderColor || ''
+  node.style.borderRadius = style.borderRadius || ''
+  node.style.paddingInline = style.paddingInline || ''
+  node.style.paddingBlock = style.paddingBlock || ''
+  node.style.boxShadow = style.boxShadow || ''
+}
+
+function groupTextItemsBySection(items: EditableTextItem[]) {
+  const grouped = new Map<string, { id: string; label: string; items: EditableTextItem[] }>()
+  items.forEach(item => {
+    const existing = grouped.get(item.sectionId)
+    if (existing) {
+      existing.items.push(item)
+      return
+    }
+    grouped.set(item.sectionId, {
+      id: item.sectionId,
+      label: item.sectionLabel,
+      items: [item],
+    })
+  })
+  return Array.from(grouped.values())
+}
+
+function groupImageItemsBySection(items: EditableImageItem[]) {
+  const grouped = new Map<string, { id: string; label: string; items: EditableImageItem[] }>()
+  items.forEach(item => {
+    const existing = grouped.get(item.sectionId)
+    if (existing) {
+      existing.items.push(item)
+      return
+    }
+    grouped.set(item.sectionId, {
+      id: item.sectionId,
+      label: item.sectionLabel,
+      items: [item],
+    })
+  })
+  return Array.from(grouped.values())
+}
+
 function buildEditableDocumentModel(html: string): EditableDocumentModel {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
   const textItems: EditableTextItem[] = []
   const imageItems: EditableImageItem[] = []
+  const sectionMap = buildSectionMeta(doc)
 
   Array.from(doc.querySelectorAll('h1, h2, h3, p, button, a')).forEach((element, index) => {
     const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
     if (!text) return
     const id = `text-${index + 1}`
+    const tagName = element.tagName.toLowerCase()
+    const kind = classifyTextElement(tagName, index, text)
+    const section = resolveSectionMeta(element, sectionMap)
     element.setAttribute('data-irie-edit-id', id)
     element.setAttribute('data-irie-editable', 'text')
     textItems.push({
       id,
-      tagName: element.tagName.toLowerCase(),
-      label: labelTextElement(element.tagName.toLowerCase(), index, text),
+      tagName,
+      label: labelTextElement(tagName, index, text),
       text,
+      isAction: isActionElement(tagName, text),
+      kind,
+      sectionId: section.id,
+      sectionLabel: section.label,
+      baseStyle: DEFAULT_TEXT_STYLE,
     })
   })
 
   Array.from(doc.querySelectorAll('img')).forEach((element, index) => {
     const id = `image-${index + 1}`
+    const section = resolveSectionMeta(element, sectionMap)
     element.setAttribute('data-irie-image-id', id)
     imageItems.push({
       id,
       label: `Image ${index + 1}`,
       src: element.getAttribute('src') || '',
+      sectionId: section.id,
+      sectionLabel: section.label,
     })
   })
 
@@ -800,6 +1034,25 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
           if (node instanceof HTMLImageElement) node.src = data.src || node.src;
         }
 
+        if (data.type === 'replace-text') {
+          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
+          if (node instanceof HTMLElement) node.textContent = data.text || '';
+        }
+
+        if (data.type === 'set-text-style') {
+          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
+          if (node instanceof HTMLElement && data.style) {
+            node.style.fontFamily = data.style.fontFamily || '';
+            node.style.fontSize = data.style.fontSize || '';
+            node.style.fontWeight = data.style.fontWeight || '';
+            node.style.lineHeight = data.style.lineHeight || '';
+            node.style.letterSpacing = data.style.letterSpacing || '';
+            node.style.color = data.style.color || '';
+            node.style.textAlign = data.style.textAlign || '';
+            node.style.textTransform = data.style.textTransform || '';
+          }
+        }
+
         if (data.type === 'set-accent') {
           const previous = root.getAttribute('data-irie-current-accent') || data.base || '';
           replaceAccent(previous, data.value || previous);
@@ -820,6 +1073,7 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
 function buildEditedHtml(
   annotatedHtml: string,
   textValues: Record<string, string>,
+  textStyles: Record<string, EditableTextStyle>,
   imageValues: Record<string, string>,
   sourceAccent: string,
   accentOverride: string,
@@ -830,6 +1084,11 @@ function buildEditedHtml(
   Object.entries(textValues).forEach(([id, value]) => {
     const node = doc.querySelector(`[data-irie-edit-id="${id}"]`)
     if (node) node.textContent = value
+  })
+
+  Object.entries(textStyles).forEach(([id, style]) => {
+    const node = doc.querySelector(`[data-irie-edit-id="${id}"]`)
+    if (node) applyTextStyleToElement(node, style)
   })
 
   Object.entries(imageValues).forEach(([id, value]) => {
@@ -2211,7 +2470,9 @@ export function GeneratePage() {
 export function EditorPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
   const [editorModel, setEditorModel] = useState<EditableDocumentModel | null>(null)
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>('content')
   const [textValues, setTextValues] = useState<Record<string, string>>({})
+  const [textStyles, setTextStyles] = useState<Record<string, EditableTextStyle>>({})
   const [imageValues, setImageValues] = useState<Record<string, string>>({})
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
@@ -2222,7 +2483,7 @@ export function EditorPage() {
   const uploadRef = useRef<HTMLInputElement>(null)
   const editorContextRef = useRef<EditorContext | null>(null)
   const prevEditStateRef = useRef<
-    | { text: Record<string, string>; image: Record<string, string>; accent: string }
+    | { text: Record<string, string>; styles: Record<string, EditableTextStyle>; image: Record<string, string>; accent: string }
     | null
   >(null)
   const editLogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2241,11 +2502,17 @@ export function EditorPage() {
     const initialImage = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src]))
     const initialAccent = saved.metadata?.palette?.accent || '#C9A84C'
     setTextValues(initialText)
+    setTextStyles(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.baseStyle])))
     setImageValues(initialImage)
     setAccentOverride(initialAccent)
     // Seed the edit-log baseline so the initial hydrated values aren't logged
     // as spurious edits on first render.
-    prevEditStateRef.current = { text: initialText, image: initialImage, accent: initialAccent }
+    prevEditStateRef.current = {
+      text: initialText,
+      styles: Object.fromEntries(nextModel.textItems.map(item => [item.id, item.baseStyle])),
+      image: initialImage,
+      accent: initialAccent,
+    }
     setEditorReady(true)
     setLoaded(true)
   }, [])
@@ -2293,7 +2560,14 @@ export function EditorPage() {
   useEffect(() => {
     if (!editorReady || !generation || !editorModel) return
     const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
-    const nextHtml = buildEditedHtml(editorModel.annotatedHtml, textValues, imageValues, baseAccent, accentOverride)
+    const nextHtml = buildEditedHtml(
+      editorModel.annotatedHtml,
+      textValues,
+      textStyles,
+      imageValues,
+      baseAccent,
+      accentOverride,
+    )
     const nextSnapshot: GenerationSnapshot = {
       ...generation,
       html: nextHtml,
@@ -2302,7 +2576,7 @@ export function EditorPage() {
         : generation.metadata,
     }
     writeStorage(LAST_GENERATION_STORAGE_KEY, nextSnapshot)
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
 
   // Debounced edit logger: diffs the current editor state against the last
   // logged baseline, INSERTs one builder_edits row per change, and UPDATEs the
@@ -2318,11 +2592,12 @@ export function EditorPage() {
       if (!ctx) return
       const prev = prevEditStateRef.current
       if (!prev) return
-      const next = { text: textValues, image: imageValues, accent: accentOverride }
+      const next = { text: textValues, styles: textStyles, image: imageValues, accent: accentOverride }
       const diffs = diffEditorState(prev, next)
       if (diffs.length === 0) return
       prevEditStateRef.current = {
         text: { ...textValues },
+        styles: { ...textStyles },
         image: { ...imageValues },
         accent: accentOverride,
       }
@@ -2330,6 +2605,7 @@ export function EditorPage() {
       const currentHtml = buildEditedHtml(
         editorModel.annotatedHtml,
         textValues,
+        textStyles,
         imageValues,
         baseAccent,
         accentOverride,
@@ -2356,17 +2632,38 @@ export function EditorPage() {
     return () => {
       if (editLogTimerRef.current) clearTimeout(editLogTimerRef.current)
     }
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
 
   function focusTextItem(id: string) {
     setSelectedTextId(id)
     setSelectedImageId(null)
+    setInspectorTab('content')
     iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-text', id }, '*')
+  }
+
+  function updateSelectedTextValue(value: string) {
+    if (!selectedTextId) return
+    setTextValues(prev => ({ ...prev, [selectedTextId]: value }))
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'irie-editor-parent', type: 'replace-text', id: selectedTextId, text: value },
+      '*',
+    )
+  }
+
+  function updateSelectedTextStyle<K extends keyof EditableTextStyle>(key: K, value: EditableTextStyle[K]) {
+    if (!selectedTextId) return
+    const nextStyle = { ...(textStyles[selectedTextId] || DEFAULT_TEXT_STYLE), [key]: value }
+    setTextStyles(prev => ({ ...prev, [selectedTextId]: nextStyle }))
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'irie-editor-parent', type: 'set-text-style', id: selectedTextId, style: nextStyle },
+      '*',
+    )
   }
 
   function focusImageItem(id: string) {
     setSelectedImageId(id)
     setSelectedTextId(null)
+    setInspectorTab('layout')
     iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-image', id }, '*')
     uploadRef.current?.click()
   }
@@ -2393,7 +2690,14 @@ export function EditorPage() {
   function downloadEditedHtml() {
     if (!generation?.html || !editorModel) return
     const baseAccent = generation.metadata?.palette?.accent || '#C9A84C'
-    const html = buildEditedHtml(editorModel.annotatedHtml, textValues, imageValues, baseAccent, accentOverride)
+    const html = buildEditedHtml(
+      editorModel.annotatedHtml,
+      textValues,
+      textStyles,
+      imageValues,
+      baseAccent,
+      accentOverride,
+    )
     downloadHtml(html, generation.blueprint?.brandCore?.brandName || 'irie-page')
     const ctx = editorContextRef.current
     if (ctx) {
@@ -2401,6 +2705,38 @@ export function EditorPage() {
       void logPublish(supabase, ctx, html)
     }
   }
+
+  function syncComputedStylesFromFrame() {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc || !editorModel) return
+    const computedStyles = extractEditableTextStyles(doc)
+    setTextStyles(computedStyles)
+    if (prevEditStateRef.current) {
+      prevEditStateRef.current = {
+        ...prevEditStateRef.current,
+        styles: computedStyles,
+      }
+    }
+    setEditorModel(prev => (
+      prev
+        ? {
+            ...prev,
+            textItems: prev.textItems.map(item => ({
+              ...item,
+              baseStyle: computedStyles[item.id] || item.baseStyle,
+            })),
+          }
+        : prev
+    ))
+    setLoaded(true)
+  }
+
+  const selectedTextItem = editorModel?.textItems.find(item => item.id === selectedTextId) || null
+  const selectedImageItem = editorModel?.imageItems.find(item => item.id === selectedImageId) || null
+  const selectedTextStyle = selectedTextId ? (textStyles[selectedTextId] || DEFAULT_TEXT_STYLE) : DEFAULT_TEXT_STYLE
+  const sectionGroups = editorModel ? groupTextItemsBySection(editorModel.textItems) : []
+  const imageSectionGroups = editorModel ? groupImageItemsBySection(editorModel.imageItems) : []
+  const editorObjectCount = (editorModel?.textItems.length || 0) + (editorModel?.imageItems.length || 0)
 
   return (
     <BuilderErrorBoundary>
@@ -2424,35 +2760,63 @@ export function EditorPage() {
             <section className="platform-editor-layout">
               <aside className="platform-editor-sidebar">
                 <div className="platform-editor-panel">
-                  <span className="platform-kicker">Content</span>
-                  <div className="platform-editor-list">
-                    {editorModel.textItems.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
-                        onClick={() => focusTextItem(item.id)}
-                      >
-                        <strong>{item.tagName.toUpperCase()} · {item.label}</strong>
-                        <span>{(textValues[item.id] || item.text).slice(0, 50)}</span>
-                      </button>
+                  <span className="platform-kicker">Workspace</span>
+                  <div className="platform-editor-workspace">
+                    <strong>{generation.blueprint?.brandCore?.brandName || 'Current Site'}</strong>
+                    <span>{sectionGroups.length} sections · {editorObjectCount} editable objects</span>
+                  </div>
+                </div>
+
+                <div className="platform-editor-panel">
+                  <span className="platform-kicker">Structure</span>
+                  <div className="platform-editor-sections">
+                    {sectionGroups.map(section => (
+                      <div key={section.id} className="platform-editor-section-card">
+                        <div className="platform-editor-section-head">
+                          <strong>{section.label}</strong>
+                          <span>{section.items.length} text objects</span>
+                        </div>
+                        <div className="platform-editor-list">
+                          {section.items.map(item => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
+                              onClick={() => focusTextItem(item.id)}
+                            >
+                              <strong>{item.kind} · {item.label}</strong>
+                              <span>{(textValues[item.id] || item.text).slice(0, 50)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
 
                 <div className="platform-editor-panel">
                   <span className="platform-kicker">Images</span>
-                  <div className="platform-editor-list">
-                    {editorModel.imageItems.length ? editorModel.imageItems.map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
-                        onClick={() => focusImageItem(item.id)}
-                      >
-                        <strong>{item.label}</strong>
-                        <span>Replace this image slot</span>
-                      </button>
+                  <div className="platform-editor-sections">
+                    {editorModel.imageItems.length ? imageSectionGroups.map(section => (
+                      <div key={section.id} className="platform-editor-section-card">
+                        <div className="platform-editor-section-head">
+                          <strong>{section.label}</strong>
+                          <span>{section.items.length} media objects</span>
+                        </div>
+                        <div className="platform-editor-list">
+                          {section.items.map(item => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
+                              onClick={() => focusImageItem(item.id)}
+                            >
+                              <strong>image slot · {item.label}</strong>
+                              <span>Replace this image slot</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )) : <span className="platform-helper">No image slots detected.</span>}
                   </div>
                 </div>
@@ -2476,8 +2840,314 @@ export function EditorPage() {
                   className="platform-preview-frame platform-preview-frame--editor"
                   sandbox="allow-scripts allow-same-origin"
                   srcDoc={editorModel.frameHtml}
+                  onLoad={syncComputedStylesFromFrame}
                 />
               </div>
+
+              <aside className="platform-editor-inspector">
+                <div className="platform-editor-panel">
+                  <span className="platform-kicker">Inspector</span>
+                  <div className="platform-pill-row platform-pill-row--compact">
+                    <button
+                      type="button"
+                      className={`platform-pill ${inspectorTab === 'content' ? 'platform-pill--active' : ''}`}
+                      onClick={() => setInspectorTab('content')}
+                    >
+                      Content
+                    </button>
+                    <button
+                      type="button"
+                      className={`platform-pill ${inspectorTab === 'style' ? 'platform-pill--active' : ''}`}
+                      onClick={() => setInspectorTab('style')}
+                    >
+                      Style
+                    </button>
+                    <button
+                      type="button"
+                      className={`platform-pill ${inspectorTab === 'layout' ? 'platform-pill--active' : ''}`}
+                      onClick={() => setInspectorTab('layout')}
+                    >
+                      Layout
+                    </button>
+                  </div>
+                  {selectedTextItem ? (
+                    <div className="platform-editor-controls">
+                      <div className="platform-editor-selected">
+                        <strong>{selectedTextItem.label}</strong>
+                        <span>{selectedTextItem.sectionLabel} · {selectedTextItem.tagName.toUpperCase()}</span>
+                      </div>
+
+                      {inspectorTab === 'content' ? (
+                        <label className="platform-field">
+                          <span className="platform-field-label">Content</span>
+                          <textarea
+                            className="platform-textarea"
+                            rows={selectedTextItem.isAction ? 3 : 6}
+                            value={textValues[selectedTextItem.id] || selectedTextItem.text}
+                            onChange={event => updateSelectedTextValue(event.target.value)}
+                          />
+                        </label>
+                      ) : null}
+
+                      {inspectorTab === 'style' ? (
+                        <>
+                          <div className="platform-control-grid">
+                            <label className="platform-field">
+                              <span className="platform-field-label">Font</span>
+                              <select
+                                className="platform-select"
+                                value={selectedTextStyle.fontFamily}
+                                onChange={event => updateSelectedTextStyle('fontFamily', event.target.value)}
+                              >
+                                <option value="">Keep original</option>
+                                {FONT_FAMILY_OPTIONS.map(option => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Weight</span>
+                              <select
+                                className="platform-select"
+                                value={selectedTextStyle.fontWeight}
+                                onChange={event => updateSelectedTextStyle('fontWeight', event.target.value)}
+                              >
+                                <option value="">Keep original</option>
+                                <option value="300">300</option>
+                                <option value="400">400</option>
+                                <option value="500">500</option>
+                                <option value="600">600</option>
+                                <option value="700">700</option>
+                                <option value="800">800</option>
+                                <option value="900">900</option>
+                              </select>
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Size</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.fontSize}
+                                placeholder="e.g. 24px"
+                                onChange={event => updateSelectedTextStyle('fontSize', event.target.value)}
+                              />
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Line Height</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.lineHeight}
+                                placeholder="e.g. 1.4"
+                                onChange={event => updateSelectedTextStyle('lineHeight', event.target.value)}
+                              />
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Letter Spacing</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.letterSpacing}
+                                placeholder="e.g. 0.04em"
+                                onChange={event => updateSelectedTextStyle('letterSpacing', event.target.value)}
+                              />
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Text Transform</span>
+                              <select
+                                className="platform-select"
+                                value={selectedTextStyle.textTransform}
+                                onChange={event => updateSelectedTextStyle('textTransform', event.target.value)}
+                              >
+                                <option value="">Keep original</option>
+                                <option value="none">None</option>
+                                <option value="uppercase">Uppercase</option>
+                                <option value="lowercase">Lowercase</option>
+                                <option value="capitalize">Capitalize</option>
+                              </select>
+                            </label>
+
+                            {selectedTextItem.isAction ? (
+                              <>
+                                <label className="platform-field">
+                                  <span className="platform-field-label">Background</span>
+                                  <div className="platform-color-input">
+                                    <input
+                                      type="color"
+                                      value={selectedTextStyle.backgroundColor || '#C9A84C'}
+                                      onChange={event => updateSelectedTextStyle('backgroundColor', event.target.value)}
+                                    />
+                                    <input
+                                      className="platform-input"
+                                      type="text"
+                                      value={selectedTextStyle.backgroundColor}
+                                      placeholder="#C9A84C"
+                                      onChange={event => updateSelectedTextStyle('backgroundColor', event.target.value)}
+                                    />
+                                  </div>
+                                </label>
+
+                                <label className="platform-field">
+                                  <span className="platform-field-label">Border</span>
+                                  <div className="platform-color-input">
+                                    <input
+                                      type="color"
+                                      value={selectedTextStyle.borderColor || '#C9A84C'}
+                                      onChange={event => updateSelectedTextStyle('borderColor', event.target.value)}
+                                    />
+                                    <input
+                                      className="platform-input"
+                                      type="text"
+                                      value={selectedTextStyle.borderColor}
+                                      placeholder="#C9A84C"
+                                      onChange={event => updateSelectedTextStyle('borderColor', event.target.value)}
+                                    />
+                                  </div>
+                                </label>
+                              </>
+                            ) : null}
+                          </div>
+
+                          <div className="platform-control-grid platform-control-grid--tight">
+                            <label className="platform-field">
+                              <span className="platform-field-label">Color</span>
+                              <div className="platform-color-input">
+                                <input
+                                  type="color"
+                                  value={selectedTextStyle.color || '#F2EDE4'}
+                                  onChange={event => updateSelectedTextStyle('color', event.target.value)}
+                                />
+                                <input
+                                  className="platform-input"
+                                  type="text"
+                                  value={selectedTextStyle.color}
+                                  placeholder="#F2EDE4"
+                                  onChange={event => updateSelectedTextStyle('color', event.target.value)}
+                                />
+                              </div>
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Align</span>
+                              <div className="platform-segmented">
+                                {['left', 'center', 'right'].map(option => (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    className={`platform-segmented-btn ${selectedTextStyle.textAlign === option ? 'is-active' : ''}`}
+                                    onClick={() => updateSelectedTextStyle('textAlign', option)}
+                                  >
+                                    {option}
+                                  </button>
+                                ))}
+                              </div>
+                            </label>
+                          </div>
+
+                          {selectedTextItem.isAction ? (
+                            <label className="platform-field">
+                              <span className="platform-field-label">Shadow</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.boxShadow}
+                                placeholder="e.g. 0 8px 24px rgba(0,0,0,0.18)"
+                                onChange={event => updateSelectedTextStyle('boxShadow', event.target.value)}
+                              />
+                            </label>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      {inspectorTab === 'layout' ? (
+                        selectedTextItem.isAction ? (
+                          <div className="platform-control-grid">
+                            <label className="platform-field">
+                              <span className="platform-field-label">Radius</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.borderRadius}
+                                placeholder="e.g. 18px"
+                                onChange={event => updateSelectedTextStyle('borderRadius', event.target.value)}
+                              />
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Horizontal Padding</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.paddingInline}
+                                placeholder="e.g. 24px"
+                                onChange={event => updateSelectedTextStyle('paddingInline', event.target.value)}
+                              />
+                            </label>
+
+                            <label className="platform-field">
+                              <span className="platform-field-label">Vertical Padding</span>
+                              <input
+                                className="platform-input"
+                                type="text"
+                                value={selectedTextStyle.paddingBlock}
+                                placeholder="e.g. 14px"
+                                onChange={event => updateSelectedTextStyle('paddingBlock', event.target.value)}
+                              />
+                            </label>
+                          </div>
+                        ) : (
+                          <div className="platform-editor-empty">
+                            <strong>Layout controls are the next SaaS layer.</strong>
+                            <span>This object model is now section-aware, so the next step is safe to add spacing, width, stack order, button chrome, and section background controls without rebuilding the editor shell.</span>
+                          </div>
+                        )
+                      ) : null}
+                    </div>
+                  ) : selectedImageItem ? (
+                    <div className="platform-editor-controls">
+                      <div className="platform-editor-selected">
+                        <strong>{selectedImageItem.label}</strong>
+                        <span>{selectedImageItem.sectionLabel} · IMAGE</span>
+                      </div>
+
+                      {inspectorTab === 'content' ? (
+                        <div className="platform-editor-empty">
+                          <strong>Media content is wired.</strong>
+                          <span>Use the image list or click the canvas to replace this asset now. The current editor keeps the existing crop and layout while swapping the source.</span>
+                        </div>
+                      ) : null}
+
+                      {inspectorTab === 'style' ? (
+                        <div className="platform-editor-empty">
+                          <strong>Image styling is the next object set.</strong>
+                          <span>This inspector is ready for radius, overlay, shadow, and framing controls once we add the first media style pass.</span>
+                        </div>
+                      ) : null}
+
+                      {inspectorTab === 'layout' ? (
+                        <div className="platform-editor-empty">
+                          <strong>Layout controls are staged for media too.</strong>
+                          <span>The section-aware model gives us a stable place to add object-fit, crop focus, aspect ratio, and width controls without redesigning the UI.</span>
+                        </div>
+                      ) : null}
+
+                      <button type="button" className="platform-primary-btn" onClick={() => focusImageItem(selectedImageItem.id)}>
+                        Replace image
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="platform-editor-empty">
+                      <strong>Select an object.</strong>
+                      <span>Pick a section item from the left rail or click the preview to edit content, style, and later layout controls from one scalable inspector.</span>
+                    </div>
+                  )}
+                </div>
+              </aside>
             </section>
           ) : loaded ? (
             <section className="platform-empty">
@@ -3726,12 +4396,13 @@ const platformCss = `
 
   .platform-editor-layout{
     display:grid;
-    grid-template-columns:320px minmax(0, 1fr);
+    grid-template-columns:300px minmax(0, 1fr) 320px;
     gap:1rem;
     min-height:75dvh;
   }
 
   .platform-editor-sidebar,
+  .platform-editor-inspector,
   .platform-editor-preview{
     border:1px solid var(--line);
     border-radius:26px;
@@ -3748,6 +4419,13 @@ const platformCss = `
     align-content:start;
   }
 
+  .platform-editor-inspector{
+    display:grid;
+    gap:1rem;
+    padding:1rem;
+    align-content:start;
+  }
+
   .platform-editor-panel{
     display:grid;
     gap:0.75rem;
@@ -3755,6 +4433,53 @@ const platformCss = `
     border-radius:20px;
     background:rgba(255,255,255,0.02);
     border:1px solid rgba(201,168,76,0.12);
+  }
+
+  .platform-editor-workspace{
+    display:grid;
+    gap:0.3rem;
+  }
+
+  .platform-editor-workspace strong{
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:1.18rem;
+  }
+
+  .platform-editor-workspace span{
+    color:var(--muted);
+    font-size:0.86rem;
+  }
+
+  .platform-editor-sections{
+    display:grid;
+    gap:0.85rem;
+  }
+
+  .platform-editor-section-card{
+    display:grid;
+    gap:0.7rem;
+    padding:0.85rem;
+    border-radius:18px;
+    background:rgba(255,255,255,0.025);
+    border:1px solid rgba(201,168,76,0.1);
+  }
+
+  .platform-editor-section-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.75rem;
+  }
+
+  .platform-editor-section-head strong{
+    font-size:0.84rem;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+  }
+
+  .platform-editor-section-head span{
+    color:var(--muted);
+    font-size:0.76rem;
   }
 
   .platform-editor-list{
@@ -3799,6 +4524,131 @@ const platformCss = `
   .platform-editor-preview{
     overflow:hidden;
     background:#050505;
+  }
+
+  .platform-editor-controls{
+    display:grid;
+    gap:1rem;
+  }
+
+  .platform-editor-selected{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.8rem;
+    padding:0.9rem 1rem;
+    border-radius:16px;
+    border:1px solid rgba(201,168,76,0.14);
+    background:rgba(255,255,255,0.02);
+  }
+
+  .platform-editor-selected strong{
+    font-size:0.92rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+  }
+
+  .platform-editor-selected span{
+    color:var(--muted);
+    font-size:0.82rem;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+  }
+
+  .platform-control-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:0.85rem;
+  }
+
+  .platform-control-grid--tight{
+    grid-template-columns:1fr;
+  }
+
+  .platform-field{
+    display:grid;
+    gap:0.45rem;
+  }
+
+  .platform-field-label{
+    color:var(--muted);
+    font-size:0.76rem;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+  }
+
+  .platform-input,
+  .platform-select,
+  .platform-textarea{
+    width:100%;
+    border-radius:14px;
+    border:1px solid rgba(201,168,76,0.14);
+    background:rgba(255,255,255,0.03);
+    color:var(--text);
+    font:inherit;
+    padding:0.8rem 0.95rem;
+  }
+
+  .platform-textarea{
+    resize:vertical;
+    min-height:120px;
+    line-height:1.55;
+  }
+
+  .platform-input:focus,
+  .platform-select:focus,
+  .platform-textarea:focus{
+    outline:none;
+    border-color:rgba(201,168,76,0.46);
+    box-shadow:0 0 0 1px rgba(201,168,76,0.22);
+  }
+
+  .platform-color-input{
+    display:grid;
+    grid-template-columns:56px minmax(0, 1fr);
+    gap:0.65rem;
+    align-items:center;
+  }
+
+  .platform-color-input input[type="color"]{
+    width:56px;
+    height:48px;
+    border:none;
+    border-radius:12px;
+    background:none;
+    padding:0;
+    cursor:pointer;
+  }
+
+  .platform-segmented{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:0.5rem;
+  }
+
+  .platform-segmented-btn{
+    min-height:44px;
+    border-radius:12px;
+    border:1px solid rgba(201,168,76,0.14);
+    background:rgba(255,255,255,0.02);
+    color:var(--text);
+    text-transform:capitalize;
+    cursor:pointer;
+  }
+
+  .platform-segmented-btn.is-active{
+    border-color:var(--gold);
+    background:rgba(201,168,76,0.11);
+  }
+
+  .platform-editor-empty{
+    display:grid;
+    gap:0.55rem;
+    padding:1rem;
+    border-radius:16px;
+    border:1px dashed rgba(201,168,76,0.18);
+    color:var(--muted);
+    line-height:1.6;
   }
 
   .platform-preview-frame--editor{
@@ -3901,6 +4751,10 @@ const platformCss = `
     .platform-recent-layout{
       grid-template-columns:1fr;
     }
+
+    .platform-control-grid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
   }
 
   @media (max-width: 900px){
@@ -3926,6 +4780,11 @@ const platformCss = `
     }
 
     .platform-clone-input-row{
+      grid-template-columns:1fr;
+    }
+
+    .platform-control-grid,
+    .platform-segmented{
       grid-template-columns:1fr;
     }
   }
@@ -3985,6 +4844,19 @@ const platformCss = `
     .platform-review-actions{
       flex-direction:column;
       align-items:stretch;
+    }
+
+    .platform-editor-preview{
+      order:1;
+      min-height:360px;
+    }
+
+    .platform-editor-sidebar{
+      order:2;
+    }
+
+    .platform-editor-inspector{
+      order:3;
     }
   }
 

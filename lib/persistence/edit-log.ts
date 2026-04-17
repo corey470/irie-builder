@@ -55,7 +55,13 @@ type AccentEdit = {
   before: string
   after: string
 }
-export type EditDiff = TextEdit | ImageEdit | AccentEdit
+type StyleEdit = {
+  kind: 'style'
+  element_id: string
+  before: Record<string, string>
+  after: Record<string, string>
+}
+export type EditDiff = TextEdit | ImageEdit | AccentEdit | StyleEdit
 
 function summarizeImage(value: string): string {
   if (!value) return '<empty>'
@@ -69,11 +75,13 @@ function summarizeImage(value: string): string {
 export function diffEditorState(
   prev: {
     text: Record<string, string>
+    styles: Record<string, Record<string, string>>
     image: Record<string, string>
     accent: string
   },
   next: {
     text: Record<string, string>
+    styles: Record<string, Record<string, string>>
     image: Record<string, string>
     accent: string
   },
@@ -96,6 +104,17 @@ export function diffEditorState(
         element_id: id,
         before_summary: summarizeImage(prev.image[id] ?? ''),
         after_summary: summarizeImage(value),
+      })
+    }
+  }
+  for (const [id, value] of Object.entries(next.styles)) {
+    const before = prev.styles[id] ?? {}
+    if (JSON.stringify(before) !== JSON.stringify(value)) {
+      diffs.push({
+        kind: 'style',
+        element_id: id,
+        before,
+        after: value,
       })
     }
   }
