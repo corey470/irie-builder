@@ -12,6 +12,7 @@ import {
   logPublish,
   type EditorContext,
 } from '@/lib/persistence'
+import { emitPersistenceStatus, usePersistenceStatus } from '@/lib/persistence/status'
 
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
@@ -229,6 +230,7 @@ const PASS_HISTORY_STORAGE_KEY = 'irie-builder-pass-history'
 const PENDING_GENERATION_STORAGE_KEY = 'irie-builder-pending-generation'
 const STORAGE_EVENT_NAME = 'irie-builder-storage'
 const RAIL_STORAGE_KEY = 'irie-builder-rail-collapsed'
+const MAIN_CONTENT_ID = 'main-content'
 
 const AGENT_ROSTER: Array<{ name: AgentName; label: string; description: string }> = [
   { name: 'creative-director', label: 'Creative Director', description: 'shaping the emotional target' },
@@ -651,8 +653,17 @@ interface EditableImageItem {
   id: string
   label: string
   src: string
+  alt: string
   sectionId: string
   sectionLabel: string
+  baseStyle: EditableImageStyle
+}
+
+interface EditableSectionItem {
+  id: string
+  label: string
+  tagName: string
+  baseStyle: EditableSectionStyle
 }
 
 interface EditableDocumentModel {
@@ -660,6 +671,7 @@ interface EditableDocumentModel {
   frameHtml: string
   textItems: EditableTextItem[]
   imageItems: EditableImageItem[]
+  sectionItems: EditableSectionItem[]
 }
 
 interface EditableTextStyle {
@@ -680,6 +692,23 @@ interface EditableTextStyle {
   boxShadow: string
 }
 
+interface EditableImageStyle {
+  objectFit: 'cover' | 'contain' | 'fill'
+  objectPosition: 'top' | 'center' | 'bottom'
+  borderRadius: string
+  alt: string
+}
+
+interface EditableSectionStyle {
+  paddingTop: string
+  paddingBottom: string
+  backgroundColor: string
+  backgroundImage: string
+  overlayOpacity: string
+  maxWidthMode: 'full' | 'constrained'
+  hidden: boolean
+}
+
 const DEFAULT_TEXT_STYLE: EditableTextStyle = {
   fontFamily: '',
   fontSize: '',
@@ -695,6 +724,23 @@ const DEFAULT_TEXT_STYLE: EditableTextStyle = {
   paddingInline: '',
   paddingBlock: '',
   boxShadow: '',
+}
+
+const DEFAULT_IMAGE_STYLE: EditableImageStyle = {
+  objectFit: 'cover',
+  objectPosition: 'center',
+  borderRadius: '0px',
+  alt: '',
+}
+
+const DEFAULT_SECTION_STYLE: EditableSectionStyle = {
+  paddingTop: '',
+  paddingBottom: '',
+  backgroundColor: '',
+  backgroundImage: '',
+  overlayOpacity: '0.25',
+  maxWidthMode: 'full',
+  hidden: false,
 }
 
 const FONT_FAMILY_OPTIONS = [
@@ -768,6 +814,7 @@ function buildSectionMeta(doc: Document) {
     const label = tagName === 'section' || tagName === 'article'
       ? `${baseLabel} ${nextCount}`
       : nextCount > 1 ? `${baseLabel} ${nextCount}` : baseLabel
+    node.setAttribute('data-irie-section-id', `${tagName}-${nextCount}`)
     sectionMap.set(node, {
       id: `${tagName}-${nextCount}`,
       label,
@@ -834,12 +881,61 @@ function normalizeComputedTextStyle(style: CSSStyleDeclaration): EditableTextSty
   }
 }
 
+function normalizeComputedImageStyle(node: HTMLImageElement, style: CSSStyleDeclaration): EditableImageStyle {
+  const objectPosition = style.objectPosition.includes('top')
+    ? 'top'
+    : style.objectPosition.includes('bottom')
+      ? 'bottom'
+      : 'center'
+
+  return {
+    objectFit: (style.objectFit as EditableImageStyle['objectFit']) || 'cover',
+    objectPosition,
+    borderRadius: style.borderRadius || '0px',
+    alt: node.alt || '',
+  }
+}
+
+function normalizeComputedSectionStyle(node: HTMLElement, style: CSSStyleDeclaration): EditableSectionStyle {
+  return {
+    paddingTop: style.paddingTop || '',
+    paddingBottom: style.paddingBottom || '',
+    backgroundColor: toHexColor(style.backgroundColor),
+    backgroundImage: style.backgroundImage && style.backgroundImage !== 'none'
+      ? style.backgroundImage.replace(/^url\(["']?/, '').replace(/["']?\)$/, '')
+      : '',
+    overlayOpacity: node.dataset.irieSectionOverlay || DEFAULT_SECTION_STYLE.overlayOpacity,
+    maxWidthMode: node.dataset.irieSectionMaxWidth === 'constrained' ? 'constrained' : 'full',
+    hidden: node.dataset.irieSectionHidden === 'true',
+  }
+}
+
 function extractEditableTextStyles(doc: Document): Record<string, EditableTextStyle> {
   const next: Record<string, EditableTextStyle> = {}
   doc.querySelectorAll('[data-irie-edit-id]').forEach(node => {
     const id = node.getAttribute('data-irie-edit-id')
     if (!id || !(node instanceof HTMLElement)) return
     next[id] = normalizeComputedTextStyle(window.getComputedStyle(node))
+  })
+  return next
+}
+
+function extractEditableImageStyles(doc: Document): Record<string, EditableImageStyle> {
+  const next: Record<string, EditableImageStyle> = {}
+  doc.querySelectorAll('[data-irie-image-id]').forEach(node => {
+    const id = node.getAttribute('data-irie-image-id')
+    if (!id || !(node instanceof HTMLImageElement)) return
+    next[id] = normalizeComputedImageStyle(node, window.getComputedStyle(node))
+  })
+  return next
+}
+
+function extractEditableSectionStyles(doc: Document): Record<string, EditableSectionStyle> {
+  const next: Record<string, EditableSectionStyle> = {}
+  doc.querySelectorAll('[data-irie-section-id]').forEach(node => {
+    const id = node.getAttribute('data-irie-section-id')
+    if (!id || !(node instanceof HTMLElement)) return
+    next[id] = normalizeComputedSectionStyle(node, window.getComputedStyle(node))
   })
   return next
 }
@@ -860,6 +956,38 @@ function applyTextStyleToElement(node: Element, style: EditableTextStyle) {
   node.style.paddingInline = style.paddingInline || ''
   node.style.paddingBlock = style.paddingBlock || ''
   node.style.boxShadow = style.boxShadow || ''
+}
+
+function applyImageStyleToElement(node: Element, style: EditableImageStyle) {
+  if (!(node instanceof HTMLImageElement)) return
+  node.style.objectFit = style.objectFit || DEFAULT_IMAGE_STYLE.objectFit
+  node.style.objectPosition = style.objectPosition || DEFAULT_IMAGE_STYLE.objectPosition
+  node.style.borderRadius = style.borderRadius || ''
+  node.alt = style.alt || ''
+}
+
+function buildSectionBackground(style: EditableSectionStyle) {
+  if (!style.backgroundImage) return ''
+  const opacity = Number.parseFloat(style.overlayOpacity || DEFAULT_SECTION_STYLE.overlayOpacity)
+  const safeOpacity = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0.25
+  return `linear-gradient(rgba(8, 8, 8, ${safeOpacity}), rgba(8, 8, 8, ${safeOpacity})), url("${style.backgroundImage}")`
+}
+
+function applySectionStyleToElement(node: Element, style: EditableSectionStyle) {
+  if (!(node instanceof HTMLElement)) return
+  node.style.paddingTop = style.paddingTop || ''
+  node.style.paddingBottom = style.paddingBottom || ''
+  node.style.backgroundColor = style.backgroundColor || ''
+  const background = buildSectionBackground(style)
+  node.style.backgroundImage = background || ''
+  node.style.backgroundSize = background ? 'cover' : ''
+  node.style.backgroundPosition = background ? 'center' : ''
+  node.style.maxWidth = style.maxWidthMode === 'constrained' ? '1200px' : ''
+  node.style.marginInline = style.maxWidthMode === 'constrained' ? 'auto' : ''
+  node.style.display = style.hidden ? 'none' : ''
+  node.dataset.irieSectionOverlay = style.overlayOpacity || DEFAULT_SECTION_STYLE.overlayOpacity
+  node.dataset.irieSectionMaxWidth = style.maxWidthMode
+  node.dataset.irieSectionHidden = style.hidden ? 'true' : 'false'
 }
 
 function groupTextItemsBySection(items: EditableTextItem[]) {
@@ -896,12 +1024,34 @@ function groupImageItemsBySection(items: EditableImageItem[]) {
   return Array.from(grouped.values())
 }
 
+function getAvailableInspectorTabs(selection: {
+  selectedTextItem: EditableTextItem | null
+  selectedImageItem: EditableImageItem | null
+  selectedSectionItem: EditableSectionItem | null
+}): InspectorTab[] {
+  if (selection.selectedSectionItem) return ['content', 'style', 'layout']
+  if (selection.selectedImageItem) return ['content', 'style']
+  if (selection.selectedTextItem?.isAction) return ['content', 'style', 'layout']
+  if (selection.selectedTextItem) return ['content', 'style']
+  return ['content']
+}
+
 function buildEditableDocumentModel(html: string): EditableDocumentModel {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
   const textItems: EditableTextItem[] = []
   const imageItems: EditableImageItem[] = []
+  const sectionItems: EditableSectionItem[] = []
   const sectionMap = buildSectionMeta(doc)
+
+  sectionMap.forEach((section, node) => {
+    sectionItems.push({
+      id: section.id,
+      label: section.label,
+      tagName: node.tagName.toLowerCase(),
+      baseStyle: DEFAULT_SECTION_STYLE,
+    })
+  })
 
   Array.from(doc.querySelectorAll('h1, h2, h3, p, button, a')).forEach((element, index) => {
     const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
@@ -933,8 +1083,13 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
       id,
       label: `Image ${index + 1}`,
       src: element.getAttribute('src') || '',
+      alt: element.getAttribute('alt') || '',
       sectionId: section.id,
       sectionLabel: section.label,
+      baseStyle: {
+        ...DEFAULT_IMAGE_STYLE,
+        alt: element.getAttribute('alt') || '',
+      },
     })
   })
 
@@ -948,127 +1103,12 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
   `
   doc.head.appendChild(style)
 
-  const script = doc.createElement('script')
-  script.id = 'irie-editor-script'
-  script.textContent = `
-    (() => {
-      const CHILD = 'irie-editor';
-      const PARENT = 'irie-editor-parent';
-      const selectedClass = 'is-irie-editor-selected';
-      const root = document.documentElement;
-
-      const findText = target => target instanceof Element ? target.closest('[data-irie-editable="text"]') : null;
-      const findImage = target => target instanceof Element ? target.closest('[data-irie-image-id]') : null;
-      const send = (type, payload = {}) => parent.postMessage({ source: CHILD, type, ...payload }, '*');
-      const clearSelection = () => document.querySelectorAll('.' + selectedClass).forEach(node => node.classList.remove(selectedClass));
-      const selectNode = node => {
-        clearSelection();
-        if (!node) return;
-        node.classList.add(selectedClass);
-        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      };
-      const swapColor = (value, fromColor, toColor) => {
-        if (!value) return value;
-        return value.split(fromColor).join(toColor).split(fromColor.toLowerCase()).join(toColor);
-      };
-      const replaceAccent = (fromColor, toColor) => {
-        if (!fromColor || !toColor || fromColor.toLowerCase() === toColor.toLowerCase()) return;
-        document.querySelectorAll('style').forEach(node => {
-          if (!node.textContent) return;
-          node.textContent = swapColor(node.textContent, fromColor, toColor);
-        });
-        document.querySelectorAll('[style]').forEach(node => {
-          const value = node.getAttribute('style');
-          if (!value) return;
-          node.setAttribute('style', swapColor(value, fromColor, toColor));
-        });
-        root.setAttribute('data-irie-current-accent', toColor);
-      };
-
-      document.addEventListener('click', event => {
-        const textNode = findText(event.target);
-        if (textNode) {
-          event.preventDefault();
-          selectNode(textNode);
-          textNode.setAttribute('contenteditable', 'true');
-          textNode.focus();
-          send('select-text', { id: textNode.getAttribute('data-irie-edit-id') });
-          return;
-        }
-
-        const imageNode = findImage(event.target);
-        if (imageNode) {
-          event.preventDefault();
-          selectNode(imageNode);
-          send('select-image', { id: imageNode.getAttribute('data-irie-image-id') });
-        }
-      });
-
-      document.addEventListener('input', event => {
-        const textNode = findText(event.target);
-        if (!textNode) return;
-        send('text-change', {
-          id: textNode.getAttribute('data-irie-edit-id'),
-          text: textNode.textContent || '',
-        });
-      });
-
-      window.addEventListener('message', event => {
-        const data = event.data;
-        if (!data || data.source !== PARENT) return;
-
-        if (data.type === 'focus-text') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) {
-            selectNode(node);
-            node.setAttribute('contenteditable', 'true');
-            node.focus();
-          }
-        }
-
-        if (data.type === 'focus-image') {
-          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) selectNode(node);
-        }
-
-        if (data.type === 'replace-image') {
-          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
-          if (node instanceof HTMLImageElement) node.src = data.src || node.src;
-        }
-
-        if (data.type === 'replace-text') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) node.textContent = data.text || '';
-        }
-
-        if (data.type === 'set-text-style') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement && data.style) {
-            node.style.fontFamily = data.style.fontFamily || '';
-            node.style.fontSize = data.style.fontSize || '';
-            node.style.fontWeight = data.style.fontWeight || '';
-            node.style.lineHeight = data.style.lineHeight || '';
-            node.style.letterSpacing = data.style.letterSpacing || '';
-            node.style.color = data.style.color || '';
-            node.style.textAlign = data.style.textAlign || '';
-            node.style.textTransform = data.style.textTransform || '';
-          }
-        }
-
-        if (data.type === 'set-accent') {
-          const previous = root.getAttribute('data-irie-current-accent') || data.base || '';
-          replaceAccent(previous, data.value || previous);
-        }
-      });
-    })();
-  `
-  doc.body.appendChild(script)
-
   return {
     annotatedHtml,
     frameHtml: `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`,
     textItems,
     imageItems,
+    sectionItems,
   }
 }
 
@@ -1077,6 +1117,8 @@ function buildEditedHtml(
   textValues: Record<string, string>,
   textStyles: Record<string, EditableTextStyle>,
   imageValues: Record<string, string>,
+  imageStyles: Record<string, EditableImageStyle>,
+  sectionStyles: Record<string, EditableSectionStyle>,
   sourceAccent: string,
   accentOverride: string,
 ) {
@@ -1098,10 +1140,21 @@ function buildEditedHtml(
     if (node instanceof HTMLImageElement && value) node.src = value
   })
 
-  doc.querySelectorAll('[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [contenteditable]').forEach(node => {
+  Object.entries(imageStyles).forEach(([id, style]) => {
+    const node = doc.querySelector(`[data-irie-image-id="${id}"]`)
+    if (node) applyImageStyleToElement(node, style)
+  })
+
+  Object.entries(sectionStyles).forEach(([id, style]) => {
+    const node = doc.querySelector(`[data-irie-section-id="${id}"]`)
+    if (node) applySectionStyleToElement(node, style)
+  })
+
+  doc.querySelectorAll('[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [data-irie-section-id], [contenteditable]').forEach(node => {
     node.removeAttribute('data-irie-edit-id')
     node.removeAttribute('data-irie-editable')
     node.removeAttribute('data-irie-image-id')
+    node.removeAttribute('data-irie-section-id')
     node.removeAttribute('contenteditable')
   })
 
@@ -1118,18 +1171,7 @@ function PreviewFrame({
   title: string
   className: string
 }) {
-  const frameRef = useRef<HTMLIFrameElement>(null)
-
-  useEffect(() => {
-    if (!frameRef.current || !html) return
-    const doc = frameRef.current.contentDocument
-    if (!doc) return
-    doc.open()
-    doc.write(html)
-    doc.close()
-  }, [html])
-
-  return <iframe ref={frameRef} title={title} className={className} sandbox="allow-scripts allow-same-origin" />
+  return <iframe title={title} className={className} sandbox="allow-same-origin" srcDoc={html || ''} />
 }
 
 class BuilderErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -1203,13 +1245,15 @@ function PlatformNav({
   current: 'dashboard' | 'brief' | 'generate' | 'edit' | 'publish'
   action?: ReactNode
 }) {
+  const persistence = usePersistenceStatus()
   return (
     <header className="platform-nav">
-      <Link href="/" className="platform-wordmark">IrieBuilder</Link>
+      <Link href="/dashboard" className="platform-wordmark">IrieBuilder</Link>
       <div className="platform-nav-right">
         <nav className="platform-nav-links" aria-label="Platform">
           <Link href="/dashboard" className={current === 'dashboard' ? 'is-active' : ''}>Projects</Link>
         </nav>
+        <PersistenceBadge status={persistence.status} message={persistence.message} />
         {action ? <div className="platform-nav-action">{action}</div> : null}
       </div>
     </header>
@@ -1220,15 +1264,21 @@ const FLOW_STEPS = [
   { key: 'brief', label: 'Brief', href: '/brief' },
   { key: 'generate', label: 'Generate', href: '/generate' },
   { key: 'edit', label: 'Edit', href: '/edit' },
-  { key: 'publish', label: 'Publish', href: '/publish' },
+  { key: 'publish', label: 'Export', href: '/publish' },
 ] as const
 
 function FlowIndicator({ current }: { current: 'brief' | 'generate' | 'edit' | 'publish' }) {
   return (
     <nav className="platform-flow-indicator" aria-label="Build flow">
       {FLOW_STEPS.map((step, index) => (
-        <span key={step.key} className={`platform-flow-step ${step.key === current ? 'is-active' : ''}`}>
-          <span>{step.label}</span>
+        <span key={step.key} className="platform-flow-step-wrap">
+          <Link
+            href={step.href}
+            className={`platform-flow-step ${step.key === current ? 'is-active' : ''}`}
+            aria-current={step.key === current ? 'step' : undefined}
+          >
+            <span>{step.label}</span>
+          </Link>
           {index < FLOW_STEPS.length - 1 && <span className="platform-flow-separator">→</span>}
         </span>
       ))}
@@ -1247,11 +1297,13 @@ function FlowHeader({
   backLabel: string
   right?: ReactNode
 }) {
+  const persistence = usePersistenceStatus()
   return (
     <header className="platform-flow-header">
       <Link href={backHref} className="platform-text-link">{backLabel}</Link>
       <FlowIndicator current={current} />
       <div className="platform-flow-header-actions">
+        <PersistenceBadge status={persistence.status} message={persistence.message} />
         {right}
       </div>
     </header>
@@ -1275,9 +1327,70 @@ function Pill<T extends string>({
       type="button"
       className={`platform-pill ${active ? 'platform-pill--active' : ''}`}
       onClick={() => onSelect(value)}
+      aria-pressed={active}
     >
       {label}
     </button>
+  )
+}
+
+function PersistenceBadge({
+  status,
+  message,
+}: {
+  status: ReturnType<typeof usePersistenceStatus>['status']
+  message?: string
+}) {
+  const label = message || (
+    status === 'saving'
+      ? 'Saving…'
+      : status === 'unsaved'
+        ? 'Unsaved changes'
+        : status === 'offline'
+          ? 'Offline — local only'
+          : status === 'local-only'
+            ? 'Local-only mode'
+            : status === 'error'
+              ? 'Sync issue — local only'
+              : status === 'booting'
+                ? 'Connecting…'
+                : 'Saved'
+  )
+
+  return (
+    <div
+      className={`platform-status-chip platform-status-chip--${status}`}
+      aria-live="polite"
+    >
+      {label}
+    </div>
+  )
+}
+
+function FullscreenPreviewOverlay({
+  html,
+  title,
+  onClose,
+}: {
+  html: string
+  title: string
+  onClose: () => void
+}) {
+  return (
+    <div className="platform-fullscreen-overlay" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="platform-fullscreen-bar">
+        <strong>{title}</strong>
+        <button type="button" className="platform-secondary-btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <iframe
+        title={title}
+        className="platform-fullscreen-frame"
+        sandbox="allow-same-origin"
+        srcDoc={html}
+      />
+    </div>
   )
 }
 
@@ -1354,6 +1467,15 @@ export function ProjectsHomePage() {
     }
   }, [])
 
+  const projectCards = lastGeneration ? [{
+    id: 'current-project',
+    title: lastGeneration.blueprint?.brandCore?.brandName || 'Current Project',
+    status: 'Draft',
+    updatedAt: lastGeneration.createdAt,
+    summary: resolveBriefExcerpt(savedBrief),
+    html: lastGeneration.html,
+  }] : []
+
   return (
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
@@ -1362,44 +1484,70 @@ export function ProjectsHomePage() {
           current="dashboard"
           action={<Link href="/brief" className="platform-primary-btn platform-primary-btn--nav">New Project +</Link>}
         />
-        <main className="platform-page platform-page--dashboard">
-          <section className="platform-project-grid">
-            <Link href="/brief" className="platform-project-card platform-project-card--new">
-              <span className="platform-project-plus">+</span>
-              <strong>New project</strong>
-              <span>Open a fresh brief and send the engine to work.</span>
-            </Link>
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--dashboard">
+          <section className="platform-dashboard-hero">
+            <div className="platform-section-card">
+              <span className="platform-kicker">Studio</span>
+              <h1>Build faster. Keep the site in motion.</h1>
+              <p>Start a new site, reopen a draft, or jump straight back into editing without hunting for the last pass.</p>
+              <div className="platform-hero-actions">
+                <Link href="/brief" className="platform-primary-btn">Start New Project</Link>
+                {lastGeneration ? <Link href="/edit" className="platform-secondary-btn">Resume Editing</Link> : null}
+              </div>
+            </div>
+
+            <div className="platform-dashboard-stats">
+              <div className="platform-stat-card">
+                <span>Projects</span>
+                <strong>{projectCards.length || 0}</strong>
+              </div>
+              <div className="platform-stat-card">
+                <span>Drafts</span>
+                <strong>{projectCards.length || 0}</strong>
+              </div>
+              <div className="platform-stat-card">
+                <span>Published</span>
+                <strong>0</strong>
+              </div>
+            </div>
           </section>
 
           <section className="platform-section-card platform-section-card--recent">
             <div className="platform-section-head">
-              <span className="platform-kicker">Recent</span>
-              <h2>Last generated page</h2>
+              <span className="platform-kicker">Recent projects</span>
+              <h2>Pick up where you left off.</h2>
             </div>
-            {lastGeneration ? (
-              <div className="platform-recent-layout">
-                <div className="platform-recent-thumb">
-                  <PreviewFrame
-                    html={lastGeneration.html}
-                    title="Recent preview"
-                    className="platform-preview-frame platform-preview-frame--thumb"
-                  />
-                </div>
-                <div className="platform-recent-card">
-                  <span className="platform-recent-label">Last build</span>
-                  <strong>{lastGeneration.blueprint?.brandCore?.brandName || 'Last Generation'}</strong>
-                  <p>{resolveBriefExcerpt(savedBrief)}</p>
-                  <span>{new Date(lastGeneration.createdAt).toLocaleString()}</span>
-                  <div className="platform-recent-actions">
-                    <Link href="/generate" className="platform-secondary-btn">Continue →</Link>
-                    <Link href="/edit" className="platform-text-link">Edit →</Link>
-                  </div>
-                </div>
+            {projectCards.length ? (
+              <div className="platform-project-grid platform-project-grid--cards">
+                {projectCards.map(project => (
+                  <article key={project.id} className="platform-project-card platform-project-card--studio">
+                    <div className="platform-project-thumb">
+                      <PreviewFrame
+                        html={project.html}
+                        title={`${project.title} preview`}
+                        className="platform-preview-frame platform-preview-frame--thumb"
+                      />
+                    </div>
+                    <div className="platform-project-copy">
+                      <div className="platform-project-meta">
+                        <strong>{project.title}</strong>
+                        <span className="platform-status-chip platform-status-chip--saved">{project.status}</span>
+                      </div>
+                      <p>{project.summary}</p>
+                      <span className="platform-helper">Last edited {new Date(project.updatedAt).toLocaleString()}</span>
+                    </div>
+                    <div className="platform-recent-actions">
+                      <Link href="/edit" className="platform-primary-btn">Resume Editing</Link>
+                      <Link href="/generate" className="platform-secondary-btn">Open Preview</Link>
+                    </div>
+                  </article>
+                ))}
               </div>
             ) : (
               <div className="platform-empty">
-                <h3>Nothing generated yet.</h3>
-                <p>Start a new project and your latest page will show up here for quick access.</p>
+                <h3>Create your first site.</h3>
+                <p>Brief it once, generate a direction, then refine it inside the editor.</p>
+                <Link href="/brief" className="platform-primary-btn">Create Your First Site</Link>
               </div>
             )}
           </section>
@@ -1577,6 +1725,10 @@ export function BriefPage() {
     router.push('/generate')
   }
 
+  function revealLookStage() {
+    setOpenSections(prev => ({ ...prev, design: true, settings: true, colors: true }))
+  }
+
   async function analyzeCloneUrl() {
     const url = brief.cloneUrl.trim()
     if (!url) {
@@ -1634,7 +1786,7 @@ export function BriefPage() {
           backLabel="← Projects"
           right={hasGeneration ? <Link href="/generate" className="platform-text-link">Continue →</Link> : null}
         />
-        <main className="platform-page platform-page--brief">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--brief">
           <header className="platform-brief-label-row">
             <span className="platform-kicker">New Brief</span>
           </header>
@@ -1659,7 +1811,8 @@ export function BriefPage() {
 
           <section className="platform-section-card platform-section-card--vision">
             <div className="platform-section-head">
-              <span className="platform-kicker">Your Vision</span>
+              <span className="platform-kicker">Stage 1 · Core brief</span>
+              <h2>Start with the feeling and the core prompt.</h2>
             </div>
             <textarea
               className="platform-textarea platform-textarea--hero"
@@ -1685,6 +1838,11 @@ export function BriefPage() {
                   />
                 </label>
               ))}
+            </div>
+            <div className="platform-hero-actions">
+              <button type="button" className="platform-secondary-btn" onClick={revealLookStage}>
+                Continue to Look →
+              </button>
             </div>
           </section>
 
@@ -1727,7 +1885,7 @@ export function BriefPage() {
             </div>
           </section>
 
-          <AccordionCard title="Design Direction" open={openSections.design} onToggle={() => toggleSection('design')}>
+          <AccordionCard title="Stage 2 · Shape the look" open={openSections.design} onToggle={() => toggleSection('design')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Design Toolkit</span>
               <div className="platform-pill-row">
@@ -1773,7 +1931,7 @@ export function BriefPage() {
             </div>
           </AccordionCard>
 
-          <AccordionCard title="Page Settings" open={openSections.settings} onToggle={() => toggleSection('settings')}>
+          <AccordionCard title="Stage 2 · Page settings" open={openSections.settings} onToggle={() => toggleSection('settings')}>
             <label className="platform-field">
               <span>Extra vibe detail</span>
               <textarea
@@ -1804,7 +1962,7 @@ export function BriefPage() {
             </div>
           </AccordionCard>
 
-          <AccordionCard title="Direction" open={openSections.direction} onToggle={() => toggleSection('direction')}>
+          <AccordionCard title="Stage 3 · Advanced direction" open={openSections.direction} onToggle={() => toggleSection('direction')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Directing Pass</span>
               <div className="platform-pill-row">
@@ -1848,7 +2006,7 @@ export function BriefPage() {
             </div>
           </AccordionCard>
 
-          <AccordionCard title="Colors" open={openSections.colors} onToggle={() => toggleSection('colors')}>
+          <AccordionCard title="Stage 2 · Color system" open={openSections.colors} onToggle={() => toggleSection('colors')}>
             <div className="platform-color-grid">
               {[
                 { key: 'primary' as const, label: 'Primary' },
@@ -1933,13 +2091,14 @@ export function GeneratePage() {
   const [agentStatus, setAgentStatus] = useState<AgentStatusMap>(emptyAgentStatus())
   const [viewportMode, setViewportMode] = useState<'mobile' | 'desktop'>('desktop')
   const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
-  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(true)
   const [workbenchTab, setWorkbenchTab] = useState<GenerateWorkbenchTab>('revise')
   const [decisionsTab, setDecisionsTab] = useState<DecisionsRailTab>('blueprint')
   const [revisionInput, setRevisionInput] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [generationCount, setGenerationCount] = useState(0)
   const [errorLog, setErrorLog] = useState<Array<{ time: string; message: string }>>([])
+  const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false)
   const processedPendingId = useRef<string | null>(null)
 
   const currentGeneration: GenerationSnapshot | null = html
@@ -2171,11 +2330,7 @@ export function GeneratePage() {
 
   function openFullscreen() {
     if (!html) return
-    const next = window.open('', '_blank')
-    if (!next) return
-    next.document.open()
-    next.document.write(html)
-    next.document.close()
+    setIsFullscreenPreviewOpen(true)
   }
 
   const knownAgents = new Set<string>(AGENT_ROSTER.map(agent => agent.name))
@@ -2209,8 +2364,8 @@ export function GeneratePage() {
           backLabel="← Brief"
           right={html && !loading ? <Link href="/edit" className="platform-primary-btn">Edit →</Link> : null}
         />
-        <main className={`platform-page platform-page--generate ${railCollapsed ? 'platform-page--rail-collapsed' : ''}`}>
-          <aside className="platform-agent-panel">
+        <main id={MAIN_CONTENT_ID} className={`platform-page platform-page--generate ${railCollapsed ? 'platform-page--rail-collapsed' : ''}`}>
+          <aside className="platform-agent-panel" aria-live="polite">
             <span className="platform-kicker">Agent Panel</span>
             <h1>{loading ? LOADING_MESSAGES[loadingMessageIndex] : 'Live Direction Stage'}</h1>
             <p>{loading ? 'The full creative team is assembling the page in real time.' : 'Generate, critique, revise, and compare from one focused stage.'}</p>
@@ -2315,12 +2470,12 @@ export function GeneratePage() {
                   <span className="platform-kicker">Workbench</span>
                   <h2>Refine this pass</h2>
                 </div>
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${workbenchTab === 'revise' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('revise')}>Revise</button>
-                  <button type="button" className={`platform-pill ${workbenchTab === 'history' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('history')}>History</button>
-                  <button type="button" className={`platform-pill ${workbenchTab === 'changes' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('changes')}>Changes</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Workbench panels">
+                  <button type="button" role="tab" aria-selected={workbenchTab === 'revise'} className={`platform-pill ${workbenchTab === 'revise' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('revise')}>Revise</button>
+                  <button type="button" role="tab" aria-selected={workbenchTab === 'history'} className={`platform-pill ${workbenchTab === 'history' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('history')}>History</button>
+                  <button type="button" role="tab" aria-selected={workbenchTab === 'changes'} className={`platform-pill ${workbenchTab === 'changes' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('changes')}>Changes</button>
                   {(error || errorLog.length > 0) ? (
-                    <button type="button" className={`platform-pill ${workbenchTab === 'errors' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('errors')}>Errors</button>
+                    <button type="button" role="tab" aria-selected={workbenchTab === 'errors'} className={`platform-pill ${workbenchTab === 'errors' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('errors')}>Errors</button>
                   ) : null}
                 </div>
               </div>
@@ -2412,10 +2567,10 @@ export function GeneratePage() {
 
             {!railCollapsed && (
               <div className="platform-rail-body">
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${decisionsTab === 'blueprint' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('blueprint')}>Blueprint</button>
-                  <button type="button" className={`platform-pill ${decisionsTab === 'critique' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('critique')}>Critique</button>
-                  <button type="button" className={`platform-pill ${decisionsTab === 'decisions' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('decisions')}>Decisions</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Creative review panels">
+                  <button type="button" role="tab" aria-selected={decisionsTab === 'blueprint'} className={`platform-pill ${decisionsTab === 'blueprint' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('blueprint')}>Blueprint</button>
+                  <button type="button" role="tab" aria-selected={decisionsTab === 'critique'} className={`platform-pill ${decisionsTab === 'critique' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('critique')}>Critique</button>
+                  <button type="button" role="tab" aria-selected={decisionsTab === 'decisions'} className={`platform-pill ${decisionsTab === 'decisions' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('decisions')}>Decisions</button>
                 </div>
 
                 {decisionsTab === 'blueprint' ? (
@@ -2490,6 +2645,13 @@ export function GeneratePage() {
             )}
           </aside>
         </main>
+        {isFullscreenPreviewOpen && html ? (
+          <FullscreenPreviewOverlay
+            html={html}
+            title="Fullscreen preview"
+            onClose={() => setIsFullscreenPreviewOpen(false)}
+          />
+        ) : null}
       </div>
     </BuilderErrorBoundary>
   )
@@ -2503,11 +2665,16 @@ export function EditorPage() {
   const [textValues, setTextValues] = useState<Record<string, string>>({})
   const [textStyles, setTextStyles] = useState<Record<string, EditableTextStyle>>({})
   const [imageValues, setImageValues] = useState<Record<string, string>>({})
+  const [imageStyles, setImageStyles] = useState<Record<string, EditableImageStyle>>({})
+  const [sectionStyles, setSectionStyles] = useState<Record<string, EditableSectionStyle>>({})
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
   const [accentOverride, setAccentOverride] = useState('#C9A84C')
   const [editorReady, setEditorReady] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [mobileSheet, setMobileSheet] = useState<'sections' | 'inspector' | 'theme' | null>(null)
+  const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const editorContextRef = useRef<EditorContext | null>(null)
@@ -2529,10 +2696,14 @@ export function EditorPage() {
     setEditorModel(nextModel)
     const initialText = Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text]))
     const initialImage = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src]))
+    const initialImageStyles = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.baseStyle]))
+    const initialSectionStyles = Object.fromEntries(nextModel.sectionItems.map(item => [item.id, item.baseStyle]))
     const initialAccent = saved.metadata?.palette?.accent || '#C9A84C'
     setTextValues(initialText)
     setTextStyles(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.baseStyle])))
     setImageValues(initialImage)
+    setImageStyles(initialImageStyles)
+    setSectionStyles(initialSectionStyles)
     setAccentOverride(initialAccent)
     // Seed the edit-log baseline so the initial hydrated values aren't logged
     // as spurious edits on first render.
@@ -2559,32 +2730,36 @@ export function EditorPage() {
       })
   }, [])
 
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (!event.data || event.data.source !== 'irie-editor') return
-      if (event.data.type === 'select-text' && typeof event.data.id === 'string') {
-        setSelectedTextId(event.data.id)
-        setSelectedImageId(null)
-      }
-      if (event.data.type === 'select-image' && typeof event.data.id === 'string') {
-        setSelectedImageId(event.data.id)
-        setSelectedTextId(null)
-      }
-      if (event.data.type === 'text-change' && typeof event.data.id === 'string' && typeof event.data.text === 'string') {
-        setTextValues(prev => ({ ...prev, [event.data.id]: event.data.text }))
-      }
-    }
+  function withEditorDocument(callback: (doc: Document) => void) {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    callback(doc)
+  }
 
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  function clearFrameSelection(doc: Document) {
+    doc.querySelectorAll('.is-irie-editor-selected').forEach(node => node.classList.remove('is-irie-editor-selected'))
+  }
+
+  function selectFrameNode(node: HTMLElement | null) {
+    withEditorDocument(doc => {
+      clearFrameSelection(doc)
+      if (!node) return
+      node.classList.add('is-irie-editor-selected')
+      node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    })
+  }
 
   useEffect(() => {
-    const contentWindow = iframeRef.current?.contentWindow
-    const baseAccent = generation?.metadata?.palette?.accent || '#C9A84C'
-    if (!contentWindow) return
-    contentWindow.postMessage({ source: 'irie-editor-parent', type: 'set-accent', value: accentOverride, base: baseAccent }, '*')
-  }, [accentOverride, generation])
+    withEditorDocument(doc => {
+      const previous = doc.documentElement.getAttribute('data-irie-current-accent') || generation?.metadata?.palette?.accent || '#C9A84C'
+      const html = replaceColorTokens(doc.documentElement.outerHTML, previous, accentOverride)
+      doc.open()
+      doc.write(`<!DOCTYPE html>\n${html}`)
+      doc.close()
+      doc.documentElement.setAttribute('data-irie-current-accent', accentOverride)
+      syncComputedStylesFromFrame()
+    })
+  }, [accentOverride])
 
   useEffect(() => {
     if (!editorReady || !generation || !editorModel) return
@@ -2594,6 +2769,8 @@ export function EditorPage() {
       textValues,
       textStyles,
       imageValues,
+      imageStyles,
+      sectionStyles,
       baseAccent,
       accentOverride,
     )
@@ -2605,7 +2782,7 @@ export function EditorPage() {
         : generation.metadata,
     }
     writeStorage(LAST_GENERATION_STORAGE_KEY, nextSnapshot)
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageStyles, imageValues, sectionStyles, textStyles, textValues])
 
   // Debounced edit logger: diffs the current editor state against the last
   // logged baseline, INSERTs one builder_edits row per change, and UPDATEs the
@@ -2636,6 +2813,8 @@ export function EditorPage() {
         textValues,
         textStyles,
         imageValues,
+        imageStyles,
+        sectionStyles,
         baseAccent,
         accentOverride,
       )
@@ -2661,40 +2840,95 @@ export function EditorPage() {
     return () => {
       if (editLogTimerRef.current) clearTimeout(editLogTimerRef.current)
     }
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageStyles, imageValues, sectionStyles, textStyles, textValues])
 
   function focusTextItem(id: string) {
     setSelectedTextId(id)
     setSelectedImageId(null)
+    setSelectedSectionId(null)
     setInspectorTab('content')
-    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-text', id }, '*')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.setAttribute('contenteditable', 'true')
+        node.focus()
+      }
+    })
   }
 
   function updateSelectedTextValue(value: string) {
     if (!selectedTextId) return
     setTextValues(prev => ({ ...prev, [selectedTextId]: value }))
-    iframeRef.current?.contentWindow?.postMessage(
-      { source: 'irie-editor-parent', type: 'replace-text', id: selectedTextId, text: value },
-      '*',
-    )
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${selectedTextId}"]`)
+      if (node instanceof HTMLElement) node.textContent = value
+    })
   }
 
   function updateSelectedTextStyle<K extends keyof EditableTextStyle>(key: K, value: EditableTextStyle[K]) {
     if (!selectedTextId) return
     const nextStyle = { ...(textStyles[selectedTextId] || DEFAULT_TEXT_STYLE), [key]: value }
     setTextStyles(prev => ({ ...prev, [selectedTextId]: nextStyle }))
-    iframeRef.current?.contentWindow?.postMessage(
-      { source: 'irie-editor-parent', type: 'set-text-style', id: selectedTextId, style: nextStyle },
-      '*',
-    )
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${selectedTextId}"]`)
+      if (node) applyTextStyleToElement(node, nextStyle)
+    })
   }
 
   function focusImageItem(id: string) {
     setSelectedImageId(id)
     setSelectedTextId(null)
-    setInspectorTab('layout')
-    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-image', id }, '*')
+    setSelectedSectionId(null)
+    setInspectorTab('content')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-image-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    })
+  }
+
+  function focusSectionItem(id: string) {
+    setSelectedSectionId(id)
+    setSelectedTextId(null)
+    setSelectedImageId(null)
+    setInspectorTab('style')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-section-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    })
+  }
+
+  function triggerImageReplace() {
     uploadRef.current?.click()
+  }
+
+  function updateSelectedImageStyle<K extends keyof EditableImageStyle>(key: K, value: EditableImageStyle[K]) {
+    if (!selectedImageId) return
+    const nextStyle = { ...(imageStyles[selectedImageId] || DEFAULT_IMAGE_STYLE), [key]: value }
+    setImageStyles(prev => ({ ...prev, [selectedImageId]: nextStyle }))
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-image-id="${selectedImageId}"]`)
+      if (node) applyImageStyleToElement(node, nextStyle)
+    })
+  }
+
+  function updateSelectedSectionStyle<K extends keyof EditableSectionStyle>(key: K, value: EditableSectionStyle[K]) {
+    if (!selectedSectionId) return
+    const nextStyle = { ...(sectionStyles[selectedSectionId] || DEFAULT_SECTION_STYLE), [key]: value }
+    setSectionStyles(prev => ({ ...prev, [selectedSectionId]: nextStyle }))
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-section-id="${selectedSectionId}"]`)
+      if (node) applySectionStyleToElement(node, nextStyle)
+    })
   }
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -2705,12 +2939,10 @@ export function EditorPage() {
       const result = typeof reader.result === 'string' ? reader.result : ''
       if (!result) return
       setImageValues(prev => ({ ...prev, [selectedImageId]: result }))
-      iframeRef.current?.contentWindow?.postMessage({
-        source: 'irie-editor-parent',
-        type: 'replace-image',
-        id: selectedImageId,
-        src: result,
-      }, '*')
+      withEditorDocument(doc => {
+        const node = doc.querySelector(`[data-irie-image-id="${selectedImageId}"]`)
+        if (node instanceof HTMLImageElement) node.src = result
+      })
     }
     reader.readAsDataURL(file)
     event.target.value = ''
@@ -2724,6 +2956,8 @@ export function EditorPage() {
       textValues,
       textStyles,
       imageValues,
+      imageStyles,
+      sectionStyles,
       baseAccent,
       accentOverride,
     )
@@ -2739,7 +2973,11 @@ export function EditorPage() {
     const doc = iframeRef.current?.contentDocument
     if (!doc || !editorModel) return
     const computedStyles = extractEditableTextStyles(doc)
+    const computedImageStyles = extractEditableImageStyles(doc)
+    const computedSectionStyles = extractEditableSectionStyles(doc)
     setTextStyles(computedStyles)
+    setImageStyles(computedImageStyles)
+    setSectionStyles(computedSectionStyles)
     if (prevEditStateRef.current) {
       prevEditStateRef.current = {
         ...prevEditStateRef.current,
@@ -2754,18 +2992,78 @@ export function EditorPage() {
               ...item,
               baseStyle: computedStyles[item.id] || item.baseStyle,
             })),
+            imageItems: prev.imageItems.map(item => ({
+              ...item,
+              baseStyle: computedImageStyles[item.id] || item.baseStyle,
+            })),
+            sectionItems: prev.sectionItems.map(item => ({
+              ...item,
+              baseStyle: computedSectionStyles[item.id] || item.baseStyle,
+            })),
           }
         : prev
     ))
+    doc.removeEventListener('click', handleFrameClick)
+    doc.removeEventListener('input', handleFrameInput)
+    doc.addEventListener('click', handleFrameClick)
+    doc.addEventListener('input', handleFrameInput)
     setLoaded(true)
+  }
+
+  function handleFrameClick(event: Event) {
+    const target = event.target
+    if (!(target instanceof Element)) return
+
+    const textNode = target.closest('[data-irie-editable="text"]')
+    if (textNode instanceof HTMLElement) {
+      const id = textNode.getAttribute('data-irie-edit-id')
+      if (!id) return
+      focusTextItem(id)
+      return
+    }
+
+    const imageNode = target.closest('[data-irie-image-id]')
+    if (imageNode instanceof HTMLElement) {
+      const id = imageNode.getAttribute('data-irie-image-id')
+      if (!id) return
+      focusImageItem(id)
+      return
+    }
+
+    const sectionNode = target.closest('[data-irie-section-id]')
+    if (sectionNode instanceof HTMLElement) {
+      const id = sectionNode.getAttribute('data-irie-section-id')
+      if (!id) return
+      focusSectionItem(id)
+    }
+  }
+
+  function handleFrameInput(event: Event) {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+    const textNode = target.closest('[data-irie-editable="text"]')
+    if (!(textNode instanceof HTMLElement)) return
+    const id = textNode.getAttribute('data-irie-edit-id')
+    if (!id) return
+    setTextValues(prev => ({ ...prev, [id]: textNode.textContent || '' }))
   }
 
   const selectedTextItem = editorModel?.textItems.find(item => item.id === selectedTextId) || null
   const selectedImageItem = editorModel?.imageItems.find(item => item.id === selectedImageId) || null
+  const selectedSectionItem = editorModel?.sectionItems.find(item => item.id === selectedSectionId) || null
   const selectedTextStyle = selectedTextId ? (textStyles[selectedTextId] || DEFAULT_TEXT_STYLE) : DEFAULT_TEXT_STYLE
+  const selectedImageStyle = selectedImageId ? (imageStyles[selectedImageId] || DEFAULT_IMAGE_STYLE) : DEFAULT_IMAGE_STYLE
+  const selectedSectionStyle = selectedSectionId ? (sectionStyles[selectedSectionId] || DEFAULT_SECTION_STYLE) : DEFAULT_SECTION_STYLE
   const sectionGroups = editorModel ? groupTextItemsBySection(editorModel.textItems) : []
   const imageSectionGroups = editorModel ? groupImageItemsBySection(editorModel.imageItems) : []
   const editorObjectCount = (editorModel?.textItems.length || 0) + (editorModel?.imageItems.length || 0)
+  const availableInspectorTabs = getAvailableInspectorTabs({ selectedTextItem, selectedImageItem, selectedSectionItem })
+
+  useEffect(() => {
+    if (!availableInspectorTabs.includes(inspectorTab)) {
+      setInspectorTab(availableInspectorTabs[0] || 'content')
+    }
+  }, [availableInspectorTabs, inspectorTab])
 
   return (
     <BuilderErrorBoundary>
@@ -2780,11 +3078,11 @@ export function EditorPage() {
               <button type="button" className="platform-secondary-btn" onClick={downloadEditedHtml} disabled={!editorModel}>
                 Download HTML
               </button>
-              <Link href="/publish" className="platform-primary-btn">Publish →</Link>
+              <Link href="/publish" className="platform-primary-btn">Export →</Link>
             </div>
           )}
         />
-        <main className="platform-page platform-page--editor">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--editor">
           {generation?.html && editorModel ? (
             <section className="platform-editor-layout">
               <aside className="platform-editor-sidebar">
@@ -2796,10 +3094,10 @@ export function EditorPage() {
                   <span className="platform-kicker">Editor</span>
                 </div>
 
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${sidebarTab === 'content' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('content')}>Content</button>
-                  <button type="button" className={`platform-pill ${sidebarTab === 'media' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('media')}>Media</button>
-                  <button type="button" className={`platform-pill ${sidebarTab === 'theme' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('theme')}>Theme</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Editor panels">
+                  <button type="button" role="tab" aria-selected={sidebarTab === 'content'} className={`platform-pill ${sidebarTab === 'content' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('content')}>Content</button>
+                  <button type="button" role="tab" aria-selected={sidebarTab === 'media'} className={`platform-pill ${sidebarTab === 'media' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('media')}>Media</button>
+                  <button type="button" role="tab" aria-selected={sidebarTab === 'theme'} className={`platform-pill ${sidebarTab === 'theme' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('theme')}>Theme</button>
                 </div>
 
                 {sidebarTab === 'content' ? (
@@ -2808,10 +3106,10 @@ export function EditorPage() {
                   <div className="platform-editor-sections">
                     {sectionGroups.map(section => (
                       <div key={section.id} className="platform-editor-section-group">
-                        <div className="platform-editor-section-head">
+                        <button type="button" className={`platform-editor-section-head ${selectedSectionId === section.id ? 'is-active' : ''}`} onClick={() => focusSectionItem(section.id)}>
                           <strong>{section.label}</strong>
                           <span>{section.items.length} text objects</span>
-                        </div>
+                        </button>
                         <div className="platform-editor-list">
                           {section.items.map(item => (
                             <button
@@ -2890,11 +3188,19 @@ export function EditorPage() {
               </aside>
 
               <div className="platform-editor-preview">
+                <div className="platform-editor-preview-toolbar">
+                  <span className="platform-kicker">Preview</span>
+                  <div className="platform-flow-header-button-row">
+                    <button type="button" className="platform-secondary-btn" onClick={() => setIsFullscreenPreviewOpen(true)}>
+                      Fullscreen
+                    </button>
+                  </div>
+                </div>
                 <iframe
                   ref={iframeRef}
                   title="Editable preview"
                   className="platform-preview-frame platform-preview-frame--editor"
-                  sandbox="allow-scripts allow-same-origin"
+                  sandbox="allow-same-origin"
                   srcDoc={editorModel.frameHtml}
                   onLoad={syncComputedStylesFromFrame}
                 />
@@ -2903,30 +3209,82 @@ export function EditorPage() {
               <aside className="platform-editor-inspector">
                 <div className="platform-editor-panel">
                   <span className="platform-kicker">Inspector</span>
-                  <div className="platform-pill-row platform-pill-row--compact">
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'content' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('content')}
-                    >
-                      Content
-                    </button>
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'style' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('style')}
-                    >
-                      Style
-                    </button>
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'layout' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('layout')}
-                    >
-                      Layout
-                    </button>
+                  <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Inspector panels">
+                    {availableInspectorTabs.map(tab => (
+                      <button
+                        key={tab}
+                        type="button"
+                        role="tab"
+                        aria-selected={inspectorTab === tab}
+                        className={`platform-pill ${inspectorTab === tab ? 'platform-pill--active' : ''}`}
+                        onClick={() => setInspectorTab(tab)}
+                      >
+                        {tab[0].toUpperCase() + tab.slice(1)}
+                      </button>
+                    ))}
                   </div>
-                  {selectedTextItem ? (
+                  {selectedSectionItem ? (
+                    <div className="platform-editor-controls">
+                      <div className="platform-editor-selected">
+                        <strong>{selectedSectionItem.label}</strong>
+                        <span>{selectedSectionItem.tagName.toUpperCase()} · SECTION</span>
+                      </div>
+
+                      {inspectorTab === 'content' ? (
+                        <div className="platform-control-grid">
+                          <label className="platform-field">
+                            <span className="platform-field-label">Visibility</span>
+                            <div className="platform-segmented">
+                              <button type="button" className={`platform-segmented-btn ${!selectedSectionStyle.hidden ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('hidden', false)}>Show</button>
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.hidden ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('hidden', true)}>Hide</button>
+                            </div>
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Max Width</span>
+                            <div className="platform-segmented">
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.maxWidthMode === 'full' ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('maxWidthMode', 'full')}>Full</button>
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.maxWidthMode === 'constrained' ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('maxWidthMode', 'constrained')}>Constrained</button>
+                            </div>
+                          </label>
+                        </div>
+                      ) : null}
+
+                      {inspectorTab === 'style' ? (
+                        <>
+                          <div className="platform-control-grid">
+                            <label className="platform-field">
+                              <span className="platform-field-label">Padding Top</span>
+                              <input className="platform-input" type="text" value={selectedSectionStyle.paddingTop} placeholder="e.g. 72px" onChange={event => updateSelectedSectionStyle('paddingTop', event.target.value)} />
+                            </label>
+                            <label className="platform-field">
+                              <span className="platform-field-label">Padding Bottom</span>
+                              <input className="platform-input" type="text" value={selectedSectionStyle.paddingBottom} placeholder="e.g. 72px" onChange={event => updateSelectedSectionStyle('paddingBottom', event.target.value)} />
+                            </label>
+                          </div>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Background</span>
+                            <div className="platform-color-input">
+                              <input type="color" value={selectedSectionStyle.backgroundColor || '#080808'} onChange={event => updateSelectedSectionStyle('backgroundColor', event.target.value)} />
+                              <input className="platform-input" type="text" value={selectedSectionStyle.backgroundColor} placeholder="#080808" onChange={event => updateSelectedSectionStyle('backgroundColor', event.target.value)} />
+                            </div>
+                          </label>
+                        </>
+                      ) : null}
+
+                      {inspectorTab === 'layout' ? (
+                        <>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Background Image URL</span>
+                            <input className="platform-input" type="url" value={selectedSectionStyle.backgroundImage} placeholder="https://…" onChange={event => updateSelectedSectionStyle('backgroundImage', event.target.value)} />
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Overlay Opacity</span>
+                            <input className="platform-input" type="range" min="0" max="1" step="0.05" value={selectedSectionStyle.overlayOpacity} onChange={event => updateSelectedSectionStyle('overlayOpacity', event.target.value)} />
+                          </label>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : selectedTextItem ? (
                     <div className="platform-editor-controls">
                       <div className="platform-editor-selected">
                         <strong>{selectedTextItem.label}</strong>
@@ -3120,8 +3478,7 @@ export function EditorPage() {
                         </>
                       ) : null}
 
-                      {inspectorTab === 'layout' ? (
-                        selectedTextItem.isAction ? (
+                      {inspectorTab === 'layout' && selectedTextItem.isAction ? (
                           <div className="platform-control-grid">
                             <label className="platform-field">
                               <span className="platform-field-label">Radius</span>
@@ -3156,12 +3513,6 @@ export function EditorPage() {
                               />
                             </label>
                           </div>
-                        ) : (
-                          <div className="platform-editor-empty">
-                            <strong>Layout controls are the next SaaS layer.</strong>
-                            <span>This object model is now section-aware, so the next step is safe to add spacing, width, stack order, button chrome, and section background controls without rebuilding the editor shell.</span>
-                          </div>
-                        )
                       ) : null}
                     </div>
                   ) : selectedImageItem ? (
@@ -3172,34 +3523,53 @@ export function EditorPage() {
                       </div>
 
                       {inspectorTab === 'content' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Media content is wired.</strong>
-                          <span>Use the image list or click the canvas to replace this asset now. The current editor keeps the existing crop and layout while swapping the source.</span>
-                        </div>
+                        <>
+                          <div className="platform-image-thumb">
+                            <img src={imageValues[selectedImageItem.id] || selectedImageItem.src} alt={selectedImageStyle.alt || selectedImageItem.alt || ''} />
+                          </div>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Alt text</span>
+                            <input className="platform-input" type="text" value={selectedImageStyle.alt} onChange={event => updateSelectedImageStyle('alt', event.target.value)} />
+                          </label>
+                          <button type="button" className="platform-primary-btn" onClick={triggerImageReplace}>
+                            Replace image
+                          </button>
+                        </>
                       ) : null}
 
                       {inspectorTab === 'style' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Image styling is the next object set.</strong>
-                          <span>This inspector is ready for radius, overlay, shadow, and framing controls once we add the first media style pass.</span>
-                        </div>
+                        <>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Fit</span>
+                            <div className="platform-segmented">
+                              {(['cover', 'contain', 'fill'] as const).map(option => (
+                                <button key={option} type="button" className={`platform-segmented-btn ${selectedImageStyle.objectFit === option ? 'is-active' : ''}`} onClick={() => updateSelectedImageStyle('objectFit', option)}>
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Position</span>
+                            <div className="platform-segmented">
+                              {(['top', 'center', 'bottom'] as const).map(option => (
+                                <button key={option} type="button" className={`platform-segmented-btn ${selectedImageStyle.objectPosition === option ? 'is-active' : ''}`} onClick={() => updateSelectedImageStyle('objectPosition', option)}>
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Radius</span>
+                            <input className="platform-input" type="range" min="0" max="24" step="1" value={parseInt(selectedImageStyle.borderRadius || '0', 10) || 0} onChange={event => updateSelectedImageStyle('borderRadius', `${event.target.value}px`)} />
+                          </label>
+                        </>
                       ) : null}
-
-                      {inspectorTab === 'layout' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Layout controls are staged for media too.</strong>
-                          <span>The section-aware model gives us a stable place to add object-fit, crop focus, aspect ratio, and width controls without redesigning the UI.</span>
-                        </div>
-                      ) : null}
-
-                      <button type="button" className="platform-primary-btn" onClick={() => focusImageItem(selectedImageItem.id)}>
-                        Replace image
-                      </button>
                     </div>
                   ) : (
                     <div className="platform-editor-empty">
                       <strong>Select an object.</strong>
-                      <span>Pick a section item from the left rail or click the preview to edit content, style, and later layout controls from one scalable inspector.</span>
+                      <span>Pick a section, text block, or image from the left rail or click the preview to edit it.</span>
                     </div>
                   )}
                 </div>
@@ -3212,6 +3582,22 @@ export function EditorPage() {
             </section>
           ) : null}
         </main>
+        {isFullscreenPreviewOpen && editorModel ? (
+          <FullscreenPreviewOverlay
+            html={buildEditedHtml(
+              editorModel.annotatedHtml,
+              textValues,
+              textStyles,
+              imageValues,
+              imageStyles,
+              sectionStyles,
+              generation?.metadata?.palette?.accent || '#C9A84C',
+              accentOverride,
+            )}
+            title="Edited preview"
+            onClose={() => setIsFullscreenPreviewOpen(false)}
+          />
+        ) : null}
       </div>
     </BuilderErrorBoundary>
   )
@@ -3219,7 +3605,6 @@ export function EditorPage() {
 
 export function PublishPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
-  const [copied, setCopied] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const publishContextRef = useRef<EditorContext | null>(null)
 
@@ -3251,29 +3636,20 @@ export function PublishPage() {
     }
   }
 
-  const embedCode = '<iframe src="https://your-hosted-page.example/page.html" width="100%" height="100%"></iframe>'
   const htmlSize = generation?.html ? new Blob([generation.html], { type: 'text/html' }).size : 0
-
-  async function copyEmbedCode() {
-    try {
-      await navigator.clipboard.writeText(embedCode)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {}
-  }
 
   return (
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
         <FlowHeader current="publish" backHref="/edit" backLabel="← Edit" />
-        <main className="platform-page platform-page--placeholder">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--placeholder">
           {generation?.html ? (
             <>
               <section className="platform-section-card">
                 <div className="platform-section-head">
-                  <span className="platform-kicker">Download</span>
-                  <h2>Take the HTML and host it anywhere.</h2>
+                  <span className="platform-kicker">Export</span>
+                  <h2>Download the site and host it anywhere.</h2>
                 </div>
                 <div className="platform-publish-actions">
                   <button
@@ -3289,31 +3665,28 @@ export function PublishPage() {
 
               <section className="platform-section-card">
                 <div className="platform-section-head">
-                  <span className="platform-kicker">Copy Embed</span>
-                  <h2>Drop it into any existing site.</h2>
+                  <span className="platform-kicker">What you get</span>
+                  <h2>An honest export for this pass.</h2>
                 </div>
-                <div className="platform-code-card">
-                  <code>{embedCode}</code>
+                <div className="platform-export-list">
+                  <div className="platform-export-item">
+                    <strong>Downloadable HTML</strong>
+                    <span>Take the finished markup and host it on any static platform.</span>
+                  </div>
+                  <div className="platform-export-item">
+                    <strong>Keep the design intact</strong>
+                    <span>The export preserves your copy, styling, image swaps, and section refinements.</span>
+                  </div>
+                  <div className="platform-export-item">
+                    <strong>Hosted publishing is next</strong>
+                    <span>For now, export is the honest path. Hosted publishing is coming soon.</span>
+                  </div>
                 </div>
-                <div className="platform-publish-actions">
-                  <button type="button" className="platform-secondary-btn" onClick={copyEmbedCode}>
-                    {copied ? 'Copied' : 'Copy Code'}
-                  </button>
-                  <span className="platform-helper">Host the HTML file first, then replace the src with your URL.</span>
-                </div>
-              </section>
-
-              <section className="platform-section-card platform-section-card--muted">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">Share Preview</span>
-                  <h2>Coming soon</h2>
-                </div>
-                <p>Live URLs and custom domains are coming in the next release.</p>
               </section>
             </>
           ) : loaded ? (
             <section className="platform-empty">
-              <h2>Nothing to publish yet.</h2>
+              <h2>Nothing to export yet.</h2>
               <p><Link href="/brief" className="platform-text-link">← Start a brief</Link></p>
             </section>
           ) : null}
@@ -3327,17 +3700,18 @@ const platformCss = `
   *,*::before,*::after{box-sizing:border-box}
   :root{
     --bg:#080808;
-    --panel:#101010;
-    --panel-2:#141414;
+    --panel:#0f0f0f;
+    --panel-2:#131313;
     --line:rgba(201,168,76,0.18);
     --gold:#C9A84C;
-    --gold-soft:rgba(201,168,76,0.12);
-    --text:#FAF7F2;
-    --muted:rgba(250,247,242,0.68);
-    --muted-2:rgba(250,247,242,0.42);
+    --gold-soft:rgba(201,168,76,0.08);
+    --gold-dim:rgba(201,168,76,0.15);
+    --text:#F2EDE4;
+    --cream:#F2EDE4;
+    --muted:rgba(242,237,228,0.68);
+    --muted-2:rgba(242,237,228,0.45);
     --danger:#E37272;
-    --radius:24px;
-    --shadow:0 32px 80px rgba(0,0,0,0.35);
+    --radius:10px;
   }
 
   body{
@@ -3364,9 +3738,8 @@ const platformCss = `
     justify-content:space-between;
     gap:1rem;
     padding:1.2rem clamp(1.1rem, 3vw, 2.4rem);
-    border-bottom:1px solid rgba(201,168,76,0.08);
-    background:rgba(8,8,8,0.86);
-    backdrop-filter:blur(18px);
+    border-bottom:1px solid var(--line);
+    background:rgba(8,8,8,0.96);
   }
 
   .platform-wordmark{
@@ -3409,7 +3782,7 @@ const platformCss = `
   .platform-page{
     width:min(1440px, calc(100% - 2rem));
     margin:0 auto;
-    padding:1.5rem 0 3rem;
+    padding:1rem 0 1.5rem;
   }
 
   .platform-page--dashboard,
@@ -3429,14 +3802,14 @@ const platformCss = `
 
   .platform-page--generate{
     display:grid;
-    grid-template-columns:280px minmax(0,1fr) 220px;
-    gap:1rem;
+    grid-template-columns:220px minmax(0,1fr) 320px;
+    gap:0.8rem;
     align-items:stretch;
-    min-height:calc(100dvh - 8.5rem);
+    min-height:calc(100dvh - 8rem);
   }
 
   .platform-page--generate.platform-page--rail-collapsed{
-    grid-template-columns:280px minmax(0,1fr) 44px;
+    grid-template-columns:72px minmax(0,1fr) 56px;
   }
 
   .platform-kicker{
@@ -3455,10 +3828,7 @@ const platformCss = `
   .platform-decisions-rail{
     border:1px solid var(--line);
     border-radius:var(--radius);
-    background:
-      linear-gradient(180deg, rgba(201,168,76,0.04), rgba(255,255,255,0.01)),
-      var(--panel);
-    box-shadow:var(--shadow);
+    background:var(--panel);
   }
 
   .platform-hero-card,
@@ -3509,7 +3879,7 @@ const platformCss = `
 
   .platform-primary-btn{
     border:none;
-    border-radius:999px;
+    border-radius:6px;
     background:var(--gold);
     color:#0A0A0A;
     text-decoration:none;
@@ -3535,8 +3905,8 @@ const platformCss = `
 
   .platform-secondary-btn{
     border:1px solid var(--line);
-    border-radius:999px;
-    background:rgba(255,255,255,0.02);
+    border-radius:6px;
+    background:transparent;
     color:var(--text);
     padding:0.9rem 1.15rem;
     text-decoration:none;
@@ -3591,7 +3961,7 @@ const platformCss = `
 
   .platform-chip,
   .platform-pill{
-    border-radius:999px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.24);
     background:transparent;
     color:var(--muted);
@@ -3627,7 +3997,7 @@ const platformCss = `
   .platform-input,
   .platform-textarea{
     width:100%;
-    border-radius:20px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.18);
     background:var(--panel-2);
     color:var(--text);
@@ -3666,8 +4036,8 @@ const platformCss = `
 
   .platform-reference-card{
     border:1px solid rgba(201,168,76,0.16);
-    border-radius:20px;
-    background:rgba(255,255,255,0.02);
+    border-radius:8px;
+    background:var(--panel-2);
     padding:1rem;
     text-align:left;
     color:var(--text);
@@ -3703,8 +4073,8 @@ const platformCss = `
     gap:0.55rem;
     padding:1rem;
     border:1px solid rgba(201,168,76,0.12);
-    border-radius:20px;
-    background:rgba(255,255,255,0.02);
+    border-radius:8px;
+    background:var(--panel-2);
   }
 
   .platform-slider-head{
@@ -4858,6 +5228,185 @@ const platformCss = `
     max-height:160px;
   }
 
+  .platform-status-chip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:40px;
+    padding:0.45rem 0.75rem;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:rgba(201,168,76,0.04);
+    color:var(--cream);
+    font-size:0.78rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+
+  .platform-status-chip--offline,
+  .platform-status-chip--local-only,
+  .platform-status-chip--error{
+    background:rgba(201,168,76,0.12);
+  }
+
+  .platform-dashboard-hero{
+    display:grid;
+    grid-template-columns:minmax(0, 1.6fr) minmax(280px, 0.8fr);
+    gap:1rem;
+  }
+
+  .platform-dashboard-stats{
+    display:grid;
+    gap:0.8rem;
+  }
+
+  .platform-stat-card,
+  .platform-project-card--studio{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--panel);
+    padding:1rem;
+  }
+
+  .platform-stat-card span{
+    color:var(--muted);
+    font-size:0.8rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+  }
+
+  .platform-stat-card strong{
+    display:block;
+    margin-top:0.35rem;
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:2rem;
+  }
+
+  .platform-project-grid--cards{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .platform-project-thumb,
+  .platform-image-thumb{
+    overflow:hidden;
+    border:1px solid rgba(201,168,76,0.12);
+    border-radius:8px;
+    background:#050505;
+  }
+
+  .platform-project-copy{
+    display:grid;
+    gap:0.45rem;
+    margin-top:0.85rem;
+  }
+
+  .platform-project-meta{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.75rem;
+  }
+
+  .platform-editor-layout{
+    grid-template-columns:220px minmax(0,1fr) 320px;
+    height:calc(100dvh - 9rem);
+    overflow:hidden;
+  }
+
+  .platform-page--editor{
+    height:calc(100dvh - 7rem);
+    overflow:hidden;
+  }
+
+  .platform-editor-sidebar,
+  .platform-editor-inspector{
+    overflow-y:auto;
+  }
+
+  .platform-editor-preview{
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+  }
+
+  .platform-editor-preview-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.8rem;
+    padding:0.75rem 0.9rem;
+    border-bottom:1px solid var(--line);
+  }
+
+  .platform-editor-section-head{
+    width:100%;
+    padding:0.4rem 0;
+    border:none;
+    background:none;
+    color:var(--cream);
+    cursor:pointer;
+    text-align:left;
+  }
+
+  .platform-editor-section-head.is-active{
+    color:var(--gold);
+  }
+
+  .platform-preview-frame--editor{
+    min-height:100%;
+  }
+
+  .platform-export-list{
+    display:grid;
+    gap:0.8rem;
+  }
+
+  .platform-export-item{
+    display:grid;
+    gap:0.3rem;
+    padding:0.9rem 1rem;
+    border:1px solid rgba(201,168,76,0.12);
+    border-radius:8px;
+    background:var(--panel-2);
+  }
+
+  .platform-image-thumb{
+    min-height:160px;
+  }
+
+  .platform-image-thumb img{
+    display:block;
+    width:100%;
+    height:160px;
+    object-fit:cover;
+  }
+
+  .platform-fullscreen-overlay{
+    position:fixed;
+    inset:0;
+    z-index:120;
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+    background:rgba(8,8,8,0.94);
+    padding:1rem;
+  }
+
+  .platform-fullscreen-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:0.75rem 0 1rem;
+  }
+
+  .platform-fullscreen-frame{
+    width:100%;
+    height:100%;
+    border:none;
+    border-radius:10px;
+    background:#050505;
+  }
+
   @media (max-width: 1200px){
     .platform-page--generate,
     .platform-page--generate.platform-page--rail-collapsed{
@@ -4928,6 +5477,30 @@ const platformCss = `
 
     .platform-control-grid,
     .platform-segmented{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .platform-page--generate{
+      display:flex;
+      flex-direction:column;
+    }
+
+    .platform-generate-main{
+      order:1;
+    }
+
+    .platform-agent-panel{
+      order:2;
+    }
+
+    .platform-decisions-rail{
+      order:3;
+    }
+
+    .platform-dashboard-hero,
+    .platform-project-grid--cards{
       grid-template-columns:1fr;
     }
   }
@@ -5082,7 +5655,7 @@ const platformCss = `
       flex-direction:column;
     }
     .platform-editor-layout::before{
-      content:"Best edited on desktop. Text and color tweaks still work here.";
+      content:"Mobile review mode is active. For the full editing stack, switch to desktop.";
       order:0;
       display:block;
       padding:0.75rem 1rem;

@@ -7,6 +7,7 @@ import {
   hydrateLocalStorage,
   attachSupabaseSync,
 } from '@/lib/persistence'
+import { emitPersistenceStatus } from '@/lib/persistence/status'
 
 type GateStatus = 'booting' | 'rescuing' | 'ready' | 'anonymous'
 
@@ -30,12 +31,14 @@ export function PersistenceGate({ children }: { children: ReactNode }) {
     let detach: (() => void) | undefined
 
     async function boot() {
+      emitPersistenceStatus('booting', 'Connecting your workspace…')
       const supabase = createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
       if (!user) {
+        emitPersistenceStatus('local-only', 'Local-only mode')
         if (!cancelled) setStatus('anonymous')
         return
       }
@@ -46,13 +49,16 @@ export function PersistenceGate({ children }: { children: ReactNode }) {
           user.id,
         )
         if (rescued && !cancelled) setStatus('rescuing')
+        if (rescued) emitPersistenceStatus('saving', 'Restoring your latest work…')
         await hydrateLocalStorage(supabase, project)
         detach = attachSupabaseSync(supabase, user.id, project.id)
+        emitPersistenceStatus('saved', 'Saved')
         if (!cancelled) setStatus('ready')
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[persistence] boot failed', err)
         // Fall through to anonymous mode so the app is still usable.
+        emitPersistenceStatus('offline', 'Offline — changes stored locally')
         if (!cancelled) setStatus('anonymous')
       }
     }

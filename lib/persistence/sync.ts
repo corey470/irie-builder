@@ -5,6 +5,7 @@ import {
   LAST_GENERATION_KEY,
   STORAGE_EVENT,
 } from './keys'
+import { emitPersistenceStatus } from './status'
 
 type Supabase = SupabaseClient<Database>
 
@@ -55,6 +56,7 @@ export function attachSupabaseSync(
 
   async function pushBrief() {
     if (typeof window === 'undefined') return
+    emitPersistenceStatus('saving', 'Saving…')
     const brief = safeParseJSON<Record<string, unknown>>(
       window.localStorage.getItem(BRIEF_KEY),
     )
@@ -67,11 +69,15 @@ export function attachSupabaseSync(
     if (error) {
       // eslint-disable-next-line no-console
       console.error('[persistence] brief sync failed', error)
+      emitPersistenceStatus('offline', 'Offline — changes stored locally')
+      return
     }
+    emitPersistenceStatus('saved', 'Saved')
   }
 
   async function pushGeneration() {
     if (typeof window === 'undefined') return
+    emitPersistenceStatus('saving', 'Saving…')
     const snapshot = safeParseJSON<GenerationSnapshot>(
       window.localStorage.getItem(LAST_GENERATION_KEY),
     )
@@ -108,6 +114,7 @@ export function attachSupabaseSync(
       // eslint-disable-next-line no-console
       console.error('[persistence] generation sync failed', insertError)
       lastSyncedGenAt = null
+      emitPersistenceStatus('offline', 'Offline — changes stored locally')
       return
     }
     await supabase
@@ -115,6 +122,7 @@ export function attachSupabaseSync(
       .update({ current_generation_id: gen.id })
       .eq('id', projectId)
       .eq('owner_id', userId)
+    emitPersistenceStatus('saved', 'Saved')
   }
 
   function handler(event: Event) {
@@ -123,6 +131,7 @@ export function attachSupabaseSync(
     if (!key) return
 
     if (key === BRIEF_KEY) {
+      emitPersistenceStatus('unsaved', 'Unsaved changes')
       if (briefTimer) clearTimeout(briefTimer)
       briefTimer = setTimeout(() => {
         void pushBrief()
@@ -130,6 +139,7 @@ export function attachSupabaseSync(
       return
     }
     if (key === LAST_GENERATION_KEY) {
+      emitPersistenceStatus('unsaved', 'Unsaved changes')
       void pushGeneration()
     }
   }
