@@ -12,6 +12,7 @@ import {
   logPublish,
   type EditorContext,
 } from '@/lib/persistence'
+import { emitPersistenceStatus, usePersistenceStatus } from '@/lib/persistence/status'
 
 type MoodOption = 'light' | 'dark' | 'warm'
 type PageOption = 'landing' | 'store' | 'portfolio' | 'event'
@@ -229,6 +230,7 @@ const PASS_HISTORY_STORAGE_KEY = 'irie-builder-pass-history'
 const PENDING_GENERATION_STORAGE_KEY = 'irie-builder-pending-generation'
 const STORAGE_EVENT_NAME = 'irie-builder-storage'
 const RAIL_STORAGE_KEY = 'irie-builder-rail-collapsed'
+const MAIN_CONTENT_ID = 'main-content'
 
 const AGENT_ROSTER: Array<{ name: AgentName; label: string; description: string }> = [
   { name: 'creative-director', label: 'Creative Director', description: 'shaping the emotional target' },
@@ -651,8 +653,17 @@ interface EditableImageItem {
   id: string
   label: string
   src: string
+  alt: string
   sectionId: string
   sectionLabel: string
+  baseStyle: EditableImageStyle
+}
+
+interface EditableSectionItem {
+  id: string
+  label: string
+  tagName: string
+  baseStyle: EditableSectionStyle
 }
 
 interface EditableDocumentModel {
@@ -660,6 +671,7 @@ interface EditableDocumentModel {
   frameHtml: string
   textItems: EditableTextItem[]
   imageItems: EditableImageItem[]
+  sectionItems: EditableSectionItem[]
 }
 
 interface EditableTextStyle {
@@ -680,6 +692,23 @@ interface EditableTextStyle {
   boxShadow: string
 }
 
+interface EditableImageStyle {
+  objectFit: 'cover' | 'contain' | 'fill'
+  objectPosition: 'top' | 'center' | 'bottom'
+  borderRadius: string
+  alt: string
+}
+
+interface EditableSectionStyle {
+  paddingTop: string
+  paddingBottom: string
+  backgroundColor: string
+  backgroundImage: string
+  overlayOpacity: string
+  maxWidthMode: 'full' | 'constrained'
+  hidden: boolean
+}
+
 const DEFAULT_TEXT_STYLE: EditableTextStyle = {
   fontFamily: '',
   fontSize: '',
@@ -695,6 +724,23 @@ const DEFAULT_TEXT_STYLE: EditableTextStyle = {
   paddingInline: '',
   paddingBlock: '',
   boxShadow: '',
+}
+
+const DEFAULT_IMAGE_STYLE: EditableImageStyle = {
+  objectFit: 'cover',
+  objectPosition: 'center',
+  borderRadius: '0px',
+  alt: '',
+}
+
+const DEFAULT_SECTION_STYLE: EditableSectionStyle = {
+  paddingTop: '',
+  paddingBottom: '',
+  backgroundColor: '',
+  backgroundImage: '',
+  overlayOpacity: '0.25',
+  maxWidthMode: 'full',
+  hidden: false,
 }
 
 const FONT_FAMILY_OPTIONS = [
@@ -768,6 +814,7 @@ function buildSectionMeta(doc: Document) {
     const label = tagName === 'section' || tagName === 'article'
       ? `${baseLabel} ${nextCount}`
       : nextCount > 1 ? `${baseLabel} ${nextCount}` : baseLabel
+    node.setAttribute('data-irie-section-id', `${tagName}-${nextCount}`)
     sectionMap.set(node, {
       id: `${tagName}-${nextCount}`,
       label,
@@ -834,12 +881,61 @@ function normalizeComputedTextStyle(style: CSSStyleDeclaration): EditableTextSty
   }
 }
 
+function normalizeComputedImageStyle(node: HTMLImageElement, style: CSSStyleDeclaration): EditableImageStyle {
+  const objectPosition = style.objectPosition.includes('top')
+    ? 'top'
+    : style.objectPosition.includes('bottom')
+      ? 'bottom'
+      : 'center'
+
+  return {
+    objectFit: (style.objectFit as EditableImageStyle['objectFit']) || 'cover',
+    objectPosition,
+    borderRadius: style.borderRadius || '0px',
+    alt: node.alt || '',
+  }
+}
+
+function normalizeComputedSectionStyle(node: HTMLElement, style: CSSStyleDeclaration): EditableSectionStyle {
+  return {
+    paddingTop: style.paddingTop || '',
+    paddingBottom: style.paddingBottom || '',
+    backgroundColor: toHexColor(style.backgroundColor),
+    backgroundImage: style.backgroundImage && style.backgroundImage !== 'none'
+      ? style.backgroundImage.replace(/^url\(["']?/, '').replace(/["']?\)$/, '')
+      : '',
+    overlayOpacity: node.dataset.irieSectionOverlay || DEFAULT_SECTION_STYLE.overlayOpacity,
+    maxWidthMode: node.dataset.irieSectionMaxWidth === 'constrained' ? 'constrained' : 'full',
+    hidden: node.dataset.irieSectionHidden === 'true',
+  }
+}
+
 function extractEditableTextStyles(doc: Document): Record<string, EditableTextStyle> {
   const next: Record<string, EditableTextStyle> = {}
   doc.querySelectorAll('[data-irie-edit-id]').forEach(node => {
     const id = node.getAttribute('data-irie-edit-id')
     if (!id || !(node instanceof HTMLElement)) return
     next[id] = normalizeComputedTextStyle(window.getComputedStyle(node))
+  })
+  return next
+}
+
+function extractEditableImageStyles(doc: Document): Record<string, EditableImageStyle> {
+  const next: Record<string, EditableImageStyle> = {}
+  doc.querySelectorAll('[data-irie-image-id]').forEach(node => {
+    const id = node.getAttribute('data-irie-image-id')
+    if (!id || !(node instanceof HTMLImageElement)) return
+    next[id] = normalizeComputedImageStyle(node, window.getComputedStyle(node))
+  })
+  return next
+}
+
+function extractEditableSectionStyles(doc: Document): Record<string, EditableSectionStyle> {
+  const next: Record<string, EditableSectionStyle> = {}
+  doc.querySelectorAll('[data-irie-section-id]').forEach(node => {
+    const id = node.getAttribute('data-irie-section-id')
+    if (!id || !(node instanceof HTMLElement)) return
+    next[id] = normalizeComputedSectionStyle(node, window.getComputedStyle(node))
   })
   return next
 }
@@ -860,6 +956,38 @@ function applyTextStyleToElement(node: Element, style: EditableTextStyle) {
   node.style.paddingInline = style.paddingInline || ''
   node.style.paddingBlock = style.paddingBlock || ''
   node.style.boxShadow = style.boxShadow || ''
+}
+
+function applyImageStyleToElement(node: Element, style: EditableImageStyle) {
+  if (!(node instanceof HTMLImageElement)) return
+  node.style.objectFit = style.objectFit || DEFAULT_IMAGE_STYLE.objectFit
+  node.style.objectPosition = style.objectPosition || DEFAULT_IMAGE_STYLE.objectPosition
+  node.style.borderRadius = style.borderRadius || ''
+  node.alt = style.alt || ''
+}
+
+function buildSectionBackground(style: EditableSectionStyle) {
+  if (!style.backgroundImage) return ''
+  const opacity = Number.parseFloat(style.overlayOpacity || DEFAULT_SECTION_STYLE.overlayOpacity)
+  const safeOpacity = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 0.25
+  return `linear-gradient(rgba(8, 8, 8, ${safeOpacity}), rgba(8, 8, 8, ${safeOpacity})), url("${style.backgroundImage}")`
+}
+
+function applySectionStyleToElement(node: Element, style: EditableSectionStyle) {
+  if (!(node instanceof HTMLElement)) return
+  node.style.paddingTop = style.paddingTop || ''
+  node.style.paddingBottom = style.paddingBottom || ''
+  node.style.backgroundColor = style.backgroundColor || ''
+  const background = buildSectionBackground(style)
+  node.style.backgroundImage = background || ''
+  node.style.backgroundSize = background ? 'cover' : ''
+  node.style.backgroundPosition = background ? 'center' : ''
+  node.style.maxWidth = style.maxWidthMode === 'constrained' ? '1200px' : ''
+  node.style.marginInline = style.maxWidthMode === 'constrained' ? 'auto' : ''
+  node.style.display = style.hidden ? 'none' : ''
+  node.dataset.irieSectionOverlay = style.overlayOpacity || DEFAULT_SECTION_STYLE.overlayOpacity
+  node.dataset.irieSectionMaxWidth = style.maxWidthMode
+  node.dataset.irieSectionHidden = style.hidden ? 'true' : 'false'
 }
 
 function groupTextItemsBySection(items: EditableTextItem[]) {
@@ -896,12 +1024,34 @@ function groupImageItemsBySection(items: EditableImageItem[]) {
   return Array.from(grouped.values())
 }
 
+function getAvailableInspectorTabs(selection: {
+  selectedTextItem: EditableTextItem | null
+  selectedImageItem: EditableImageItem | null
+  selectedSectionItem: EditableSectionItem | null
+}): InspectorTab[] {
+  if (selection.selectedSectionItem) return ['content', 'style', 'layout']
+  if (selection.selectedImageItem) return ['content', 'style']
+  if (selection.selectedTextItem?.isAction) return ['content', 'style', 'layout']
+  if (selection.selectedTextItem) return ['content', 'style']
+  return ['content']
+}
+
 function buildEditableDocumentModel(html: string): EditableDocumentModel {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
   const textItems: EditableTextItem[] = []
   const imageItems: EditableImageItem[] = []
+  const sectionItems: EditableSectionItem[] = []
   const sectionMap = buildSectionMeta(doc)
+
+  sectionMap.forEach((section, node) => {
+    sectionItems.push({
+      id: section.id,
+      label: section.label,
+      tagName: node.tagName.toLowerCase(),
+      baseStyle: DEFAULT_SECTION_STYLE,
+    })
+  })
 
   Array.from(doc.querySelectorAll('h1, h2, h3, p, button, a')).forEach((element, index) => {
     const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
@@ -933,8 +1083,13 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
       id,
       label: `Image ${index + 1}`,
       src: element.getAttribute('src') || '',
+      alt: element.getAttribute('alt') || '',
       sectionId: section.id,
       sectionLabel: section.label,
+      baseStyle: {
+        ...DEFAULT_IMAGE_STYLE,
+        alt: element.getAttribute('alt') || '',
+      },
     })
   })
 
@@ -948,127 +1103,12 @@ function buildEditableDocumentModel(html: string): EditableDocumentModel {
   `
   doc.head.appendChild(style)
 
-  const script = doc.createElement('script')
-  script.id = 'irie-editor-script'
-  script.textContent = `
-    (() => {
-      const CHILD = 'irie-editor';
-      const PARENT = 'irie-editor-parent';
-      const selectedClass = 'is-irie-editor-selected';
-      const root = document.documentElement;
-
-      const findText = target => target instanceof Element ? target.closest('[data-irie-editable="text"]') : null;
-      const findImage = target => target instanceof Element ? target.closest('[data-irie-image-id]') : null;
-      const send = (type, payload = {}) => parent.postMessage({ source: CHILD, type, ...payload }, '*');
-      const clearSelection = () => document.querySelectorAll('.' + selectedClass).forEach(node => node.classList.remove(selectedClass));
-      const selectNode = node => {
-        clearSelection();
-        if (!node) return;
-        node.classList.add(selectedClass);
-        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-      };
-      const swapColor = (value, fromColor, toColor) => {
-        if (!value) return value;
-        return value.split(fromColor).join(toColor).split(fromColor.toLowerCase()).join(toColor);
-      };
-      const replaceAccent = (fromColor, toColor) => {
-        if (!fromColor || !toColor || fromColor.toLowerCase() === toColor.toLowerCase()) return;
-        document.querySelectorAll('style').forEach(node => {
-          if (!node.textContent) return;
-          node.textContent = swapColor(node.textContent, fromColor, toColor);
-        });
-        document.querySelectorAll('[style]').forEach(node => {
-          const value = node.getAttribute('style');
-          if (!value) return;
-          node.setAttribute('style', swapColor(value, fromColor, toColor));
-        });
-        root.setAttribute('data-irie-current-accent', toColor);
-      };
-
-      document.addEventListener('click', event => {
-        const textNode = findText(event.target);
-        if (textNode) {
-          event.preventDefault();
-          selectNode(textNode);
-          textNode.setAttribute('contenteditable', 'true');
-          textNode.focus();
-          send('select-text', { id: textNode.getAttribute('data-irie-edit-id') });
-          return;
-        }
-
-        const imageNode = findImage(event.target);
-        if (imageNode) {
-          event.preventDefault();
-          selectNode(imageNode);
-          send('select-image', { id: imageNode.getAttribute('data-irie-image-id') });
-        }
-      });
-
-      document.addEventListener('input', event => {
-        const textNode = findText(event.target);
-        if (!textNode) return;
-        send('text-change', {
-          id: textNode.getAttribute('data-irie-edit-id'),
-          text: textNode.textContent || '',
-        });
-      });
-
-      window.addEventListener('message', event => {
-        const data = event.data;
-        if (!data || data.source !== PARENT) return;
-
-        if (data.type === 'focus-text') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) {
-            selectNode(node);
-            node.setAttribute('contenteditable', 'true');
-            node.focus();
-          }
-        }
-
-        if (data.type === 'focus-image') {
-          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) selectNode(node);
-        }
-
-        if (data.type === 'replace-image') {
-          const node = document.querySelector('[data-irie-image-id="' + data.id + '"]');
-          if (node instanceof HTMLImageElement) node.src = data.src || node.src;
-        }
-
-        if (data.type === 'replace-text') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement) node.textContent = data.text || '';
-        }
-
-        if (data.type === 'set-text-style') {
-          const node = document.querySelector('[data-irie-edit-id="' + data.id + '"]');
-          if (node instanceof HTMLElement && data.style) {
-            node.style.fontFamily = data.style.fontFamily || '';
-            node.style.fontSize = data.style.fontSize || '';
-            node.style.fontWeight = data.style.fontWeight || '';
-            node.style.lineHeight = data.style.lineHeight || '';
-            node.style.letterSpacing = data.style.letterSpacing || '';
-            node.style.color = data.style.color || '';
-            node.style.textAlign = data.style.textAlign || '';
-            node.style.textTransform = data.style.textTransform || '';
-          }
-        }
-
-        if (data.type === 'set-accent') {
-          const previous = root.getAttribute('data-irie-current-accent') || data.base || '';
-          replaceAccent(previous, data.value || previous);
-        }
-      });
-    })();
-  `
-  doc.body.appendChild(script)
-
   return {
     annotatedHtml,
     frameHtml: `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`,
     textItems,
     imageItems,
+    sectionItems,
   }
 }
 
@@ -1077,6 +1117,8 @@ function buildEditedHtml(
   textValues: Record<string, string>,
   textStyles: Record<string, EditableTextStyle>,
   imageValues: Record<string, string>,
+  imageStyles: Record<string, EditableImageStyle>,
+  sectionStyles: Record<string, EditableSectionStyle>,
   sourceAccent: string,
   accentOverride: string,
 ) {
@@ -1098,10 +1140,21 @@ function buildEditedHtml(
     if (node instanceof HTMLImageElement && value) node.src = value
   })
 
-  doc.querySelectorAll('[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [contenteditable]').forEach(node => {
+  Object.entries(imageStyles).forEach(([id, style]) => {
+    const node = doc.querySelector(`[data-irie-image-id="${id}"]`)
+    if (node) applyImageStyleToElement(node, style)
+  })
+
+  Object.entries(sectionStyles).forEach(([id, style]) => {
+    const node = doc.querySelector(`[data-irie-section-id="${id}"]`)
+    if (node) applySectionStyleToElement(node, style)
+  })
+
+  doc.querySelectorAll('[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [data-irie-section-id], [contenteditable]').forEach(node => {
     node.removeAttribute('data-irie-edit-id')
     node.removeAttribute('data-irie-editable')
     node.removeAttribute('data-irie-image-id')
+    node.removeAttribute('data-irie-section-id')
     node.removeAttribute('contenteditable')
   })
 
@@ -1118,18 +1171,7 @@ function PreviewFrame({
   title: string
   className: string
 }) {
-  const frameRef = useRef<HTMLIFrameElement>(null)
-
-  useEffect(() => {
-    if (!frameRef.current || !html) return
-    const doc = frameRef.current.contentDocument
-    if (!doc) return
-    doc.open()
-    doc.write(html)
-    doc.close()
-  }, [html])
-
-  return <iframe ref={frameRef} title={title} className={className} sandbox="allow-scripts allow-same-origin" />
+  return <iframe title={title} className={className} sandbox="allow-same-origin" srcDoc={html || ''} />
 }
 
 class BuilderErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -1203,13 +1245,15 @@ function PlatformNav({
   current: 'dashboard' | 'brief' | 'generate' | 'edit' | 'publish'
   action?: ReactNode
 }) {
+  const persistence = usePersistenceStatus()
   return (
     <header className="platform-nav">
-      <Link href="/" className="platform-wordmark">IrieBuilder</Link>
+      <Link href="/dashboard" className="platform-wordmark">IrieBuilder</Link>
       <div className="platform-nav-right">
         <nav className="platform-nav-links" aria-label="Platform">
           <Link href="/dashboard" className={current === 'dashboard' ? 'is-active' : ''}>Projects</Link>
         </nav>
+        <PersistenceBadge status={persistence.status} message={persistence.message} />
         {action ? <div className="platform-nav-action">{action}</div> : null}
       </div>
     </header>
@@ -1220,18 +1264,30 @@ const FLOW_STEPS = [
   { key: 'brief', label: 'Brief', href: '/brief' },
   { key: 'generate', label: 'Generate', href: '/generate' },
   { key: 'edit', label: 'Edit', href: '/edit' },
-  { key: 'publish', label: 'Publish', href: '/publish' },
+  { key: 'publish', label: 'Export', href: '/publish' },
 ] as const
 
 function FlowIndicator({ current }: { current: 'brief' | 'generate' | 'edit' | 'publish' }) {
   return (
     <nav className="platform-flow-indicator" aria-label="Build flow">
-      {FLOW_STEPS.map((step, index) => (
-        <span key={step.key} className={`platform-flow-step ${step.key === current ? 'is-active' : ''}`}>
-          <span>{step.label}</span>
+      <div className="platform-flow-tablist" role="tablist" aria-label="Build flow steps">
+        {FLOW_STEPS.map((step, index) => (
+          <span key={step.key} className="platform-flow-step-wrap">
+          <Link
+            href={step.href}
+            className={`platform-flow-step ${step.key === current ? 'is-active' : ''}`}
+            role="tab"
+            aria-selected={step.key === current}
+            aria-controls={MAIN_CONTENT_ID}
+            aria-label={`${step.label} step`}
+            aria-current={step.key === current ? 'step' : undefined}
+          >
+            <span>{step.label}</span>
+          </Link>
           {index < FLOW_STEPS.length - 1 && <span className="platform-flow-separator">→</span>}
-        </span>
-      ))}
+          </span>
+        ))}
+      </div>
     </nav>
   )
 }
@@ -1247,11 +1303,13 @@ function FlowHeader({
   backLabel: string
   right?: ReactNode
 }) {
+  const persistence = usePersistenceStatus()
   return (
     <header className="platform-flow-header">
       <Link href={backHref} className="platform-text-link">{backLabel}</Link>
       <FlowIndicator current={current} />
       <div className="platform-flow-header-actions">
+        <PersistenceBadge status={persistence.status} message={persistence.message} />
         {right}
       </div>
     </header>
@@ -1275,9 +1333,70 @@ function Pill<T extends string>({
       type="button"
       className={`platform-pill ${active ? 'platform-pill--active' : ''}`}
       onClick={() => onSelect(value)}
+      aria-pressed={active}
     >
       {label}
     </button>
+  )
+}
+
+function PersistenceBadge({
+  status,
+  message,
+}: {
+  status: ReturnType<typeof usePersistenceStatus>['status']
+  message?: string
+}) {
+  const label = message || (
+    status === 'saving'
+      ? 'Saving…'
+      : status === 'unsaved'
+        ? 'Unsaved changes'
+        : status === 'offline'
+          ? 'Offline — local only'
+          : status === 'local-only'
+            ? 'Local-only mode'
+            : status === 'error'
+              ? 'Sync issue — local only'
+              : status === 'booting'
+                ? 'Connecting…'
+                : 'Saved'
+  )
+
+  return (
+    <div
+      className={`platform-status-chip platform-status-chip--${status}`}
+      aria-live="polite"
+    >
+      {label}
+    </div>
+  )
+}
+
+function FullscreenPreviewOverlay({
+  html,
+  title,
+  onClose,
+}: {
+  html: string
+  title: string
+  onClose: () => void
+}) {
+  return (
+    <div className="platform-fullscreen-overlay" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="platform-fullscreen-bar">
+        <strong>{title}</strong>
+        <button type="button" className="platform-secondary-btn" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      <iframe
+        title={title}
+        className="platform-fullscreen-frame"
+        sandbox="allow-same-origin"
+        srcDoc={html}
+      />
+    </div>
   )
 }
 
@@ -1354,6 +1473,15 @@ export function ProjectsHomePage() {
     }
   }, [])
 
+  const projectCards = lastGeneration ? [{
+    id: 'current-project',
+    title: lastGeneration.blueprint?.brandCore?.brandName || 'Current Project',
+    status: 'Draft',
+    updatedAt: lastGeneration.createdAt,
+    summary: resolveBriefExcerpt(savedBrief),
+    html: lastGeneration.html,
+  }] : []
+
   return (
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
@@ -1362,44 +1490,70 @@ export function ProjectsHomePage() {
           current="dashboard"
           action={<Link href="/brief" className="platform-primary-btn platform-primary-btn--nav">New Project +</Link>}
         />
-        <main className="platform-page platform-page--dashboard">
-          <section className="platform-project-grid">
-            <Link href="/brief" className="platform-project-card platform-project-card--new">
-              <span className="platform-project-plus">+</span>
-              <strong>New project</strong>
-              <span>Open a fresh brief and send the engine to work.</span>
-            </Link>
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--dashboard">
+          <section className="platform-dashboard-hero">
+            <div className="platform-section-card">
+              <span className="platform-kicker">Studio</span>
+              <h1>Build faster. Keep the site in motion.</h1>
+              <p>Start a new site, reopen a draft, or jump straight back into editing without hunting for the last pass.</p>
+              <div className="platform-hero-actions">
+                <Link href="/brief" className="platform-primary-btn">Start New Project</Link>
+                {lastGeneration ? <Link href="/edit" className="platform-secondary-btn">Resume Editing</Link> : null}
+              </div>
+            </div>
+
+            <div className="platform-dashboard-stats">
+              <div className="platform-stat-card">
+                <span>Projects</span>
+                <strong>{projectCards.length || 0}</strong>
+              </div>
+              <div className="platform-stat-card">
+                <span>Drafts</span>
+                <strong>{projectCards.length || 0}</strong>
+              </div>
+              <div className="platform-stat-card">
+                <span>Published</span>
+                <strong>0</strong>
+              </div>
+            </div>
           </section>
 
           <section className="platform-section-card platform-section-card--recent">
             <div className="platform-section-head">
-              <span className="platform-kicker">Recent</span>
-              <h2>Last generated page</h2>
+              <span className="platform-kicker">Recent projects</span>
+              <h2>Pick up where you left off.</h2>
             </div>
-            {lastGeneration ? (
-              <div className="platform-recent-layout">
-                <div className="platform-recent-thumb">
-                  <PreviewFrame
-                    html={lastGeneration.html}
-                    title="Recent preview"
-                    className="platform-preview-frame platform-preview-frame--thumb"
-                  />
-                </div>
-                <div className="platform-recent-card">
-                  <span className="platform-recent-label">Last build</span>
-                  <strong>{lastGeneration.blueprint?.brandCore?.brandName || 'Last Generation'}</strong>
-                  <p>{resolveBriefExcerpt(savedBrief)}</p>
-                  <span>{new Date(lastGeneration.createdAt).toLocaleString()}</span>
-                  <div className="platform-recent-actions">
-                    <Link href="/generate" className="platform-secondary-btn">Continue →</Link>
-                    <Link href="/edit" className="platform-text-link">Edit →</Link>
-                  </div>
-                </div>
+            {projectCards.length ? (
+              <div className="platform-project-grid platform-project-grid--cards">
+                {projectCards.map(project => (
+                  <article key={project.id} className="platform-project-card platform-project-card--studio">
+                    <div className="platform-project-thumb">
+                      <PreviewFrame
+                        html={project.html}
+                        title={`${project.title} preview`}
+                        className="platform-preview-frame platform-preview-frame--thumb"
+                      />
+                    </div>
+                    <div className="platform-project-copy">
+                      <div className="platform-project-meta">
+                        <strong>{project.title}</strong>
+                        <span className="platform-status-chip platform-status-chip--saved">{project.status}</span>
+                      </div>
+                      <p>{project.summary}</p>
+                      <span className="platform-helper">Last edited {new Date(project.updatedAt).toLocaleString()}</span>
+                    </div>
+                    <div className="platform-recent-actions">
+                      <Link href="/edit" className="platform-primary-btn">Resume Editing</Link>
+                      <Link href="/generate" className="platform-secondary-btn">Open Preview</Link>
+                    </div>
+                  </article>
+                ))}
               </div>
             ) : (
               <div className="platform-empty">
-                <h3>Nothing generated yet.</h3>
-                <p>Start a new project and your latest page will show up here for quick access.</p>
+                <h3>Create your first site.</h3>
+                <p>Brief it once, generate a direction, then refine it inside the editor.</p>
+                <Link href="/brief" className="platform-primary-btn">Create Your First Site</Link>
               </div>
             )}
           </section>
@@ -1418,10 +1572,8 @@ export function BriefPage() {
   const [cloneLoading, setCloneLoading] = useState(false)
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [openSections, setOpenSections] = useState({
-    design: false,
-    settings: false,
     direction: false,
-    colors: false,
+    advanced: false,
   })
   const conversationRef = useRef<HTMLDivElement>(null)
 
@@ -1577,6 +1729,10 @@ export function BriefPage() {
     router.push('/generate')
   }
 
+  function revealLookStage() {
+    setOpenSections(prev => ({ ...prev, direction: true }))
+  }
+
   async function analyzeCloneUrl() {
     const url = brief.cloneUrl.trim()
     if (!url) {
@@ -1634,7 +1790,7 @@ export function BriefPage() {
           backLabel="← Projects"
           right={hasGeneration ? <Link href="/generate" className="platform-text-link">Continue →</Link> : null}
         />
-        <main className="platform-page platform-page--brief">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--brief">
           <header className="platform-brief-label-row">
             <span className="platform-kicker">New Brief</span>
           </header>
@@ -1659,7 +1815,8 @@ export function BriefPage() {
 
           <section className="platform-section-card platform-section-card--vision">
             <div className="platform-section-head">
-              <span className="platform-kicker">Your Vision</span>
+              <span className="platform-kicker">Stage 1 · Core brief</span>
+              <h2>Start with the feeling and the core prompt.</h2>
             </div>
             <textarea
               className="platform-textarea platform-textarea--hero"
@@ -1668,66 +1825,14 @@ export function BriefPage() {
               onChange={event => updateBrief('briefInput', event.target.value)}
               placeholder="Describe the feeling, the brand, the world you want to build."
             />
-            <div className="platform-slider-grid platform-slider-grid--compact">
-              {EMOTIONAL_SLIDERS.map(slider => (
-                <label key={slider.key} className="platform-slider platform-slider--compact">
-                  <div className="platform-slider-head">
-                    <span>{slider.label}</span>
-                    <strong>{brief.emotionalControls[slider.key]}</strong>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={brief.emotionalControls[slider.key]}
-                    onChange={event => updateBrief('emotionalControls', { ...brief.emotionalControls, [slider.key]: Number(event.target.value) })}
-                  />
-                </label>
-              ))}
+            <div className="platform-hero-actions">
+              <button type="button" className="platform-secondary-btn" onClick={revealLookStage}>
+                Continue to Look →
+              </button>
             </div>
           </section>
 
-          <section className="platform-section-card platform-section-card--clone">
-            <div className="platform-section-head">
-              <span className="platform-kicker">Clone a Site</span>
-            </div>
-            <div
-              className="platform-clone-dropzone"
-              onDragOver={event => event.preventDefault()}
-              onDrop={event => {
-                event.preventDefault()
-                const droppedUrl = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
-                if (droppedUrl) updateBrief('cloneUrl', droppedUrl.trim())
-              }}
-            >
-              <p>Drag a URL here or paste it</p>
-              <div className="platform-clone-input-row">
-                <input
-                  type="url"
-                  className="platform-input"
-                  value={brief.cloneUrl}
-                  onChange={event => updateBrief('cloneUrl', event.target.value)}
-                  placeholder="Paste any URL to clone its structure and vibe"
-                />
-                <button type="button" className="platform-secondary-btn" onClick={analyzeCloneUrl} disabled={cloneLoading}>
-                  {cloneLoading ? 'Analyzing…' : 'Analyze →'}
-                </button>
-              </div>
-              {cloneLoading ? <span className="platform-helper">Analyzing site...</span> : null}
-              {cloneError ? <span className="platform-error-inline">{cloneError}</span> : null}
-              {brief.cloneAnalysis ? (
-                <div className="platform-clone-result">
-                  <p>{summarizeCloneAnalysis(brief.cloneAnalysis)}</p>
-                  <button type="button" className="platform-primary-btn" onClick={queueBuild}>
-                    Clone with my brand →
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <AccordionCard title="Design Direction" open={openSections.design} onToggle={() => toggleSection('design')}>
+          <AccordionCard title="Stage 2 · More options" open={openSections.direction} onToggle={() => toggleSection('direction')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Design Toolkit</span>
               <div className="platform-pill-row">
@@ -1742,6 +1847,42 @@ export function BriefPage() {
                 ))}
               </div>
               <p className="platform-helper">{DESIGN_DIRECTIONS.find(option => option.value === brief.designDirection)?.note}</p>
+            </div>
+
+            <div className="platform-control-block">
+              <span className="platform-field-label">Mood</span>
+              <div className="platform-pill-row">
+                {(['light', 'dark', 'warm'] as MoodOption[]).map(option => (
+                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.mood} onSelect={value => updateBrief('mood', value)} />
+                ))}
+              </div>
+            </div>
+
+            <div className="platform-control-block">
+              <span className="platform-field-label">Page Type</span>
+              <div className="platform-pill-row">
+                {(['landing', 'store', 'portfolio', 'event'] as PageOption[]).map(option => (
+                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.pageType} onSelect={value => updateBrief('pageType', value)} />
+                ))}
+              </div>
+            </div>
+
+            <div className="platform-color-grid">
+              {[
+                { key: 'primary' as const, label: 'Primary' },
+                { key: 'accent' as const, label: 'Accent' },
+                { key: 'background' as const, label: 'Background' },
+              ].map(color => (
+                <label key={color.key} className="platform-color-card">
+                  <input
+                    type="color"
+                    value={brief[color.key]}
+                    onChange={event => updateBrief(color.key, event.target.value)}
+                  />
+                  <span>{color.label}</span>
+                  <code>{brief[color.key]}</code>
+                </label>
+              ))}
             </div>
 
             <label className="platform-field">
@@ -1773,7 +1914,7 @@ export function BriefPage() {
             </div>
           </AccordionCard>
 
-          <AccordionCard title="Page Settings" open={openSections.settings} onToggle={() => toggleSection('settings')}>
+          <AccordionCard title="Stage 3 · Advanced" open={openSections.advanced} onToggle={() => toggleSection('advanced')}>
             <label className="platform-field">
               <span>Extra vibe detail</span>
               <textarea
@@ -1785,26 +1926,6 @@ export function BriefPage() {
               />
             </label>
 
-            <div className="platform-control-block">
-              <span className="platform-field-label">Mood</span>
-              <div className="platform-pill-row">
-                {(['light', 'dark', 'warm'] as MoodOption[]).map(option => (
-                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.mood} onSelect={value => updateBrief('mood', value)} />
-                ))}
-              </div>
-            </div>
-
-            <div className="platform-control-block">
-              <span className="platform-field-label">Page Type</span>
-              <div className="platform-pill-row">
-                {(['landing', 'store', 'portfolio', 'event'] as PageOption[]).map(option => (
-                  <Pill key={option} value={option} label={option.toUpperCase()} selected={brief.pageType} onSelect={value => updateBrief('pageType', value)} />
-                ))}
-              </div>
-            </div>
-          </AccordionCard>
-
-          <AccordionCard title="Direction" open={openSections.direction} onToggle={() => toggleSection('direction')}>
             <div className="platform-control-block">
               <span className="platform-field-label">Directing Pass</span>
               <div className="platform-pill-row">
@@ -1818,6 +1939,25 @@ export function BriefPage() {
                   />
                 ))}
               </div>
+            </div>
+
+            <div className="platform-slider-grid platform-slider-grid--compact">
+              {EMOTIONAL_SLIDERS.map(slider => (
+                <label key={slider.key} className="platform-slider platform-slider--compact">
+                  <div className="platform-slider-head">
+                    <span>{slider.label}</span>
+                    <strong>{brief.emotionalControls[slider.key]}</strong>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={brief.emotionalControls[slider.key]}
+                    onChange={event => updateBrief('emotionalControls', { ...brief.emotionalControls, [slider.key]: Number(event.target.value) })}
+                  />
+                </label>
+              ))}
             </div>
 
             <label className="platform-field">
@@ -1846,25 +1986,39 @@ export function BriefPage() {
                 ))}
               </div>
             </div>
-          </AccordionCard>
 
-          <AccordionCard title="Colors" open={openSections.colors} onToggle={() => toggleSection('colors')}>
-            <div className="platform-color-grid">
-              {[
-                { key: 'primary' as const, label: 'Primary' },
-                { key: 'accent' as const, label: 'Accent' },
-                { key: 'background' as const, label: 'Background' },
-              ].map(color => (
-                <label key={color.key} className="platform-color-card">
-                  <input
-                    type="color"
-                    value={brief[color.key]}
-                    onChange={event => updateBrief(color.key, event.target.value)}
-                  />
-                  <span>{color.label}</span>
-                  <code>{brief[color.key]}</code>
-                </label>
-              ))}
+            <div
+              className="platform-clone-dropzone"
+              onDragOver={event => event.preventDefault()}
+              onDrop={event => {
+                event.preventDefault()
+                const droppedUrl = event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain')
+                if (droppedUrl) updateBrief('cloneUrl', droppedUrl.trim())
+              }}
+            >
+              <p>Clone a site structure by dropping or pasting a URL.</p>
+              <div className="platform-clone-input-row">
+                <input
+                  type="url"
+                  className="platform-input"
+                  value={brief.cloneUrl}
+                  onChange={event => updateBrief('cloneUrl', event.target.value)}
+                  placeholder="Paste any URL to study its structure and rhythm"
+                />
+                <button type="button" className="platform-secondary-btn" onClick={analyzeCloneUrl} disabled={cloneLoading}>
+                  {cloneLoading ? 'Analyzing…' : 'Analyze →'}
+                </button>
+              </div>
+              {cloneLoading ? <span className="platform-helper">Analyzing site...</span> : null}
+              {cloneError ? <span className="platform-error-inline">{cloneError}</span> : null}
+              {brief.cloneAnalysis ? (
+                <div className="platform-clone-result">
+                  <p>{summarizeCloneAnalysis(brief.cloneAnalysis)}</p>
+                  <button type="button" className="platform-primary-btn" onClick={queueBuild}>
+                    Clone with my brand →
+                  </button>
+                </div>
+              ) : null}
             </div>
           </AccordionCard>
 
@@ -1933,13 +2087,14 @@ export function GeneratePage() {
   const [agentStatus, setAgentStatus] = useState<AgentStatusMap>(emptyAgentStatus())
   const [viewportMode, setViewportMode] = useState<'mobile' | 'desktop'>('desktop')
   const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
-  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(true)
   const [workbenchTab, setWorkbenchTab] = useState<GenerateWorkbenchTab>('revise')
   const [decisionsTab, setDecisionsTab] = useState<DecisionsRailTab>('blueprint')
   const [revisionInput, setRevisionInput] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [generationCount, setGenerationCount] = useState(0)
   const [errorLog, setErrorLog] = useState<Array<{ time: string; message: string }>>([])
+  const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false)
   const processedPendingId = useRef<string | null>(null)
 
   const currentGeneration: GenerationSnapshot | null = html
@@ -2171,11 +2326,7 @@ export function GeneratePage() {
 
   function openFullscreen() {
     if (!html) return
-    const next = window.open('', '_blank')
-    if (!next) return
-    next.document.open()
-    next.document.write(html)
-    next.document.close()
+    setIsFullscreenPreviewOpen(true)
   }
 
   const knownAgents = new Set<string>(AGENT_ROSTER.map(agent => agent.name))
@@ -2209,25 +2360,68 @@ export function GeneratePage() {
           backLabel="← Brief"
           right={html && !loading ? <Link href="/edit" className="platform-primary-btn">Edit →</Link> : null}
         />
-        <main className={`platform-page platform-page--generate ${railCollapsed ? 'platform-page--rail-collapsed' : ''}`}>
-          <aside className="platform-agent-panel">
-            <span className="platform-kicker">Agent Panel</span>
-            <h1>{loading ? LOADING_MESSAGES[loadingMessageIndex] : 'Live Direction Stage'}</h1>
-            <p>{loading ? 'The full creative team is assembling the page in real time.' : 'Generate, critique, revise, and compare from one focused stage.'}</p>
-            <ul className="platform-agent-list">
-              {agentRows.map(agent => (
-                <AgentStatusRow
-                  key={agent.key}
-                  label={agent.label}
-                  description={agent.description}
-                  state={agent.state}
-                />
-              ))}
-            </ul>
-          </aside>
-
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--generate">
           <section className="platform-generate-main">
-            <div className="platform-toolbar">
+            <section className="platform-preview-stage">
+              {loading ? (
+                <div className="platform-loading-stage platform-loading-stage--preview">
+                  <div className="platform-loading-orb" />
+                  <div className="platform-preview-stage-copy" aria-live="polite">
+                    <span className="platform-kicker">Generation Status</span>
+                    <h2>{LOADING_MESSAGES[loadingMessageIndex]}</h2>
+                    <p>The preview stays center stage while the agent pipeline finishes the build.</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {!html && !loading && loaded ? (
+                <div className="platform-empty platform-empty--preview">
+                  <h2>No active generation yet.</h2>
+                  <p>Head back to the brief, fill in the direction, and hit Build It to start the agent pipeline.</p>
+                  <Link href="/brief" className="platform-primary-btn">Go to Brief →</Link>
+                </div>
+              ) : null}
+
+              {html && !loading ? (
+                <>
+                  {previewMode === 'before-after' && previousGeneration ? (
+                    <div
+                      id="generate-preview-panel"
+                      className={`platform-preview-grid platform-preview-grid--${viewportMode}`}
+                    >
+                      <div className="platform-preview-panel">
+                        <span className="platform-preview-label">Before</span>
+                        <PreviewFrame html={previousGeneration.html} title="Previous generation preview" className="platform-preview-frame" />
+                      </div>
+                      <div className="platform-preview-panel">
+                        <span className="platform-preview-label">After</span>
+                        <PreviewFrame html={html} title="Current generation preview" className="platform-preview-frame" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      id="generate-preview-panel"
+                      className={`platform-preview-single platform-preview-single--${viewportMode}`}
+                    >
+                      {viewportMode === 'desktop' ? (
+                        <div className="platform-desktop-preview">
+                          <PreviewFrame html={html} title="Generated site preview" className="platform-preview-frame" />
+                          <div className="platform-mobile-card">
+                            <span className="platform-kicker">Phone Preview</span>
+                            <p>Keep the handheld view visible without giving up the full desktop composition.</p>
+                            <PreviewFrame html={html} title="Generated mobile site preview" className="platform-preview-frame platform-preview-frame--phone" />
+                          </div>
+                        </div>
+                      ) : (
+                        <PreviewFrame html={html} title="Generated site preview" className="platform-preview-frame" />
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </section>
+
+            <div className="platform-toolbar platform-toolbar--generate">
               <div className="platform-toolbar-stats">
                 <div><span>Brand</span><strong>{resolveBrandName(brief, currentSnapshot)}</strong></div>
                 <div><span>Direction</span><strong>{blueprint?.designSystem?.primaryDirection || brief.designDirection}</strong></div>
@@ -2237,77 +2431,73 @@ export function GeneratePage() {
               <div className="platform-toolbar-actions">
                 <button type="button" className="platform-secondary-btn" onClick={openFullscreen} disabled={!html}>View Full Screen</button>
                 <button type="button" className="platform-secondary-btn" onClick={() => html && downloadHtml(html, resolveBrandName(brief, currentSnapshot))} disabled={!html}>Download HTML</button>
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${viewportMode === 'mobile' ? 'platform-pill--active' : ''}`} onClick={() => setViewportMode('mobile')}>Mobile</button>
-                  <button type="button" className={`platform-pill ${viewportMode === 'desktop' ? 'platform-pill--active' : ''}`} onClick={() => setViewportMode('desktop')}>Desktop</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Preview viewport modes">
+                  <button
+                    id="generate-viewport-mobile-tab"
+                    type="button"
+                    role="tab"
+                    aria-label="Switch preview to mobile viewport"
+                    aria-selected={viewportMode === 'mobile'}
+                    aria-controls="generate-preview-panel"
+                    className={`platform-pill ${viewportMode === 'mobile' ? 'platform-pill--active' : ''}`}
+                    onClick={() => setViewportMode('mobile')}
+                  >
+                    Mobile
+                  </button>
+                  <button
+                    id="generate-viewport-desktop-tab"
+                    type="button"
+                    role="tab"
+                    aria-label="Switch preview to desktop viewport"
+                    aria-selected={viewportMode === 'desktop'}
+                    aria-controls="generate-preview-panel"
+                    className={`platform-pill ${viewportMode === 'desktop' ? 'platform-pill--active' : ''}`}
+                    onClick={() => setViewportMode('desktop')}
+                  >
+                    Desktop
+                  </button>
                 </div>
                 <button type="button" className="platform-secondary-btn" onClick={handleRegenerate} disabled={loading || !hasBriefContent(brief)}>Regenerate</button>
+                <button type="button" className="platform-secondary-btn" onClick={toggleRail} aria-expanded={!railCollapsed} aria-controls="generate-insights-drawer">
+                  {railCollapsed ? 'Open Insights' : 'Close Insights'}
+                </button>
               </div>
             </div>
 
-            {!html && !loading && loaded && (
-              <div className="platform-empty">
-                <h2>No active generation yet.</h2>
-                <p>Head back to the brief, fill in the direction, and hit Build It to start the agent pipeline.</p>
-                <Link href="/brief" className="platform-primary-btn">Go to Brief →</Link>
+            <section className="platform-status-strip" aria-live="polite">
+              <div className="platform-status-strip-copy">
+                <span className="platform-kicker">Agent Status</span>
+                <strong>{loading ? 'Live build in progress' : 'Generation pipeline ready'}</strong>
+                <span>{loading ? 'Each specialist reports here while the preview stays uninterrupted.' : 'Review the compact status strip or open insights when you want the deeper rationale.'}</span>
               </div>
-            )}
+              <ul className="platform-status-strip-list">
+                {agentRows.map(agent => (
+                  <li key={agent.key} className={`platform-status-pill platform-status-pill--${agent.state}`}>
+                    <span>{agent.label}</span>
+                    <strong>{stateLabel(agent.state)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-            {loading && (
-              <div className="platform-loading-stage">
-                <div className="platform-loading-orb" />
-                <p>The preview will appear here as soon as the assembler finishes the page.</p>
-              </div>
-            )}
-
-            {html && !loading && (
-              <>
-                {previewMode === 'before-after' && previousGeneration ? (
-                  <div className={`platform-preview-grid platform-preview-grid--${viewportMode}`}>
-                    <div className="platform-preview-panel">
-                      <span className="platform-preview-label">Before</span>
-                      <PreviewFrame html={previousGeneration.html} title="Previous generation preview" className="platform-preview-frame" />
-                    </div>
-                    <div className="platform-preview-panel">
-                      <span className="platform-preview-label">After</span>
-                      <PreviewFrame html={html} title="Current generation preview" className="platform-preview-frame" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`platform-preview-single platform-preview-single--${viewportMode}`}>
-                    {viewportMode === 'desktop' ? (
-                      <div className="platform-desktop-preview">
-                        <PreviewFrame html={html} title="Generated site preview" className="platform-preview-frame" />
-                        <div className="platform-mobile-card">
-                          <span className="platform-kicker">Phone Preview</span>
-                          <p>Keep the mobile hit in view without leaving the main desktop composition.</p>
-                          <PreviewFrame html={html} title="Generated mobile site preview" className="platform-preview-frame platform-preview-frame--phone" />
-                        </div>
-                      </div>
-                    ) : (
-                      <PreviewFrame html={html} title="Generated site preview" className="platform-preview-frame" />
-                    )}
-                  </div>
-                )}
-
-                <div className="platform-review-actions">
-                  <Link href="/edit" className="platform-primary-btn">Edit this page →</Link>
-                  <button
-                    type="button"
-                    className="platform-secondary-btn"
-                    onClick={() => html && downloadHtml(html, resolveBrandName(brief, currentSnapshot))}
-                  >
-                    Download HTML
+            {html && !loading ? (
+              <div className="platform-review-actions">
+                <Link href="/edit" className="platform-primary-btn">Edit this page →</Link>
+                <button
+                  type="button"
+                  className="platform-secondary-btn"
+                  onClick={() => html && downloadHtml(html, resolveBrandName(brief, currentSnapshot))}
+                >
+                  Download HTML
+                </button>
+                <Link href="/brief" className="platform-text-link">Start over</Link>
+                {previousGeneration ? (
+                  <button type="button" className="platform-secondary-btn" onClick={() => setPreviewMode(prev => prev === 'current' ? 'before-after' : 'current')}>
+                    {previewMode === 'before-after' ? 'Current Only' : 'Before / After'}
                   </button>
-                  <Link href="/brief" className="platform-text-link">Start over</Link>
-                  {previousGeneration && (
-                    <button type="button" className="platform-secondary-btn" onClick={() => setPreviewMode(prev => prev === 'current' ? 'before-after' : 'current')}>
-                      {previewMode === 'before-after' ? 'Current Only' : 'Before / After'}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
+                ) : null}
+              </div>
+            ) : null}
 
             <section className="platform-section-card platform-section-card--workbench">
               <div className="platform-section-head platform-section-head--compact">
@@ -2315,18 +2505,18 @@ export function GeneratePage() {
                   <span className="platform-kicker">Workbench</span>
                   <h2>Refine this pass</h2>
                 </div>
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${workbenchTab === 'revise' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('revise')}>Revise</button>
-                  <button type="button" className={`platform-pill ${workbenchTab === 'history' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('history')}>History</button>
-                  <button type="button" className={`platform-pill ${workbenchTab === 'changes' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('changes')}>Changes</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Workbench panels">
+                  <button type="button" id="workbench-tab-revise" role="tab" aria-label="Open revise workbench panel" aria-selected={workbenchTab === 'revise'} aria-controls="workbench-panel-revise" className={`platform-pill ${workbenchTab === 'revise' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('revise')}>Revise</button>
+                  <button type="button" id="workbench-tab-history" role="tab" aria-label="Open history workbench panel" aria-selected={workbenchTab === 'history'} aria-controls="workbench-panel-history" className={`platform-pill ${workbenchTab === 'history' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('history')}>History</button>
+                  <button type="button" id="workbench-tab-changes" role="tab" aria-label="Open changes workbench panel" aria-selected={workbenchTab === 'changes'} aria-controls="workbench-panel-changes" className={`platform-pill ${workbenchTab === 'changes' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('changes')}>Changes</button>
                   {(error || errorLog.length > 0) ? (
-                    <button type="button" className={`platform-pill ${workbenchTab === 'errors' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('errors')}>Errors</button>
+                    <button type="button" id="workbench-tab-errors" role="tab" aria-label="Open errors workbench panel" aria-selected={workbenchTab === 'errors'} aria-controls="workbench-panel-errors" className={`platform-pill ${workbenchTab === 'errors' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('errors')}>Errors</button>
                   ) : null}
                 </div>
               </div>
 
               {workbenchTab === 'revise' ? (
-                <div className="platform-revision-row">
+                <div id="workbench-panel-revise" role="tabpanel" aria-labelledby="workbench-tab-revise" className="platform-revision-row">
                   <textarea
                     className="platform-textarea"
                     rows={3}
@@ -2342,7 +2532,7 @@ export function GeneratePage() {
 
               {workbenchTab === 'history' ? (
                 passHistory.length > 0 ? (
-                  <div className="platform-history-list">
+                  <div id="workbench-panel-history" role="tabpanel" aria-labelledby="workbench-tab-history" className="platform-history-list">
                     {passHistory.map(item => (
                       <article key={item.label} className="platform-history-item">
                         <strong>{item.label}</strong>
@@ -2360,7 +2550,7 @@ export function GeneratePage() {
 
               {workbenchTab === 'changes' ? (
                 changeSummary ? (
-                  <div className="platform-summary-list">
+                  <div id="workbench-panel-changes" role="tabpanel" aria-labelledby="workbench-tab-changes" className="platform-summary-list">
                     <strong>{changeSummary.headline}</strong>
                     {changeSummary.improvements.map(item => <p key={item}>{item}</p>)}
                     {changeSummary.shifts.map(item => <p key={item}>{item}</p>)}
@@ -2375,7 +2565,7 @@ export function GeneratePage() {
 
               {workbenchTab === 'errors' ? (
                 error || errorLog.length > 0 ? (
-                  <div className="platform-history-list">
+                  <div id="workbench-panel-errors" role="tabpanel" aria-labelledby="workbench-tab-errors" className="platform-history-list">
                     {error ? (
                       <article className="platform-history-item platform-history-item--error">
                         <strong>Latest error</strong>
@@ -2399,99 +2589,154 @@ export function GeneratePage() {
             </section>
           </section>
 
-          <aside className={`platform-decisions-rail ${railCollapsed ? 'platform-decisions-rail--collapsed' : ''}`}>
+          {!railCollapsed ? <button type="button" className="platform-drawer-backdrop" aria-label="Close insights drawer" onClick={toggleRail} /> : null}
+          <aside id="generate-insights-drawer" className={`platform-decisions-rail ${railCollapsed ? 'platform-decisions-rail--collapsed' : 'platform-decisions-rail--open'}`}>
             <div className="platform-rail-head">
               <div>
-                <span className="platform-kicker">Creative Decisions</span>
+                <span className="platform-kicker">Insights</span>
                 <h2>Blueprint + critique</h2>
               </div>
-              <button type="button" className="platform-rail-toggle" onClick={toggleRail}>
-                {railCollapsed ? '›' : '‹'}
+              <button type="button" className="platform-rail-toggle" onClick={toggleRail} aria-label={railCollapsed ? 'Open insights drawer' : 'Close insights drawer'}>
+                {railCollapsed ? '›' : '×'}
               </button>
             </div>
 
-            {!railCollapsed && (
-              <div className="platform-rail-body">
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${decisionsTab === 'blueprint' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('blueprint')}>Blueprint</button>
-                  <button type="button" className={`platform-pill ${decisionsTab === 'critique' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('critique')}>Critique</button>
-                  <button type="button" className={`platform-pill ${decisionsTab === 'decisions' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('decisions')}>Decisions</button>
-                </div>
-
-                {decisionsTab === 'blueprint' ? (
-                  blueprint ? (
-                    <>
-                      <article className="platform-rail-card">
-                        <span className="platform-rail-label">Brand Core</span>
-                        <strong>{blueprint.brandCore.brandName}</strong>
-                        <p>{blueprint.brandCore.emotionalPromise}</p>
-                        <p>Voice: {blueprint.brandCore.brandVoice}</p>
-                      </article>
-                      <article className="platform-rail-card">
-                        <span className="platform-rail-label">Design</span>
-                        <strong>{blueprint.designSystem.primaryDirection}</strong>
-                        <p>{blueprint.designSystem.typographyStrategy}</p>
-                        <p>{blueprint.designSystem.paletteStrategy}</p>
-                      </article>
-                      <article className="platform-rail-card">
-                        <span className="platform-rail-label">Motion</span>
-                        <strong>{blueprint.motionSystem.intensity}</strong>
-                        <p>{blueprint.motionSystem.revealBehavior}</p>
-                      </article>
-                    </>
-                  ) : (
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Waiting</span>
-                      <strong>Blueprint will land here.</strong>
-                      <p>Generate a pass and this tab will condense the brand, design, and motion system into one working view.</p>
-                    </article>
-                  )
-                ) : null}
-
-                {decisionsTab === 'critique' ? (
-                  critique ? (
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Critique</span>
-                      <strong>{critique.verdict}</strong>
-                      <p>{critique.summary}</p>
-                      {critique.scores.map(score => (
-                        <div key={score.label} className="platform-score-row">
-                          <span>{score.label}</span>
-                          <strong>{score.score}</strong>
-                        </div>
-                      ))}
-                    </article>
-                  ) : (
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Waiting</span>
-                      <strong>Critique will land here.</strong>
-                      <p>After generation, the critic scores and summary will be available in this dedicated tab.</p>
-                    </article>
-                  )
-                ) : null}
-
-                {decisionsTab === 'decisions' ? (
-                  decisions.length > 0 ? decisions.map(decision => (
-                    <article key={`${decision.label}-${decision.value}`} className="platform-rail-card">
-                      <span className="platform-rail-label">{decision.label}</span>
-                      <strong>{decision.value}</strong>
-                      {decision.agent && <span className="platform-rail-agent">↳ {decision.agent}</span>}
-                      <p>{decision.reason}</p>
-                    </article>
-                  )) : (
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Waiting</span>
-                      <strong>Creative decisions will land here.</strong>
-                      <p>Once generation finishes, the rail will show the agent-attributed choices in one compact feed.</p>
-                    </article>
-                  )
-                ) : null}
+            <div className="platform-rail-body">
+              <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Creative review panels">
+                <button type="button" id="insights-tab-blueprint" role="tab" aria-label="Open blueprint insights" aria-selected={decisionsTab === 'blueprint'} aria-controls="insights-panel-blueprint" className={`platform-pill ${decisionsTab === 'blueprint' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('blueprint')}>Blueprint</button>
+                <button type="button" id="insights-tab-critique" role="tab" aria-label="Open critique insights" aria-selected={decisionsTab === 'critique'} aria-controls="insights-panel-critique" className={`platform-pill ${decisionsTab === 'critique' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('critique')}>Critique</button>
+                <button type="button" id="insights-tab-decisions" role="tab" aria-label="Open decisions insights" aria-selected={decisionsTab === 'decisions'} aria-controls="insights-panel-decisions" className={`platform-pill ${decisionsTab === 'decisions' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('decisions')}>Decisions</button>
               </div>
-            )}
+
+              {decisionsTab === 'blueprint' ? (
+                blueprint ? (
+                  <div id="insights-panel-blueprint" role="tabpanel" aria-labelledby="insights-tab-blueprint">
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Brand Core</span>
+                      <strong>{blueprint.brandCore.brandName}</strong>
+                      <p>{blueprint.brandCore.emotionalPromise}</p>
+                      <p>Voice: {blueprint.brandCore.brandVoice}</p>
+                    </article>
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Design</span>
+                      <strong>{blueprint.designSystem.primaryDirection}</strong>
+                      <p>{blueprint.designSystem.typographyStrategy}</p>
+                      <p>{blueprint.designSystem.paletteStrategy}</p>
+                    </article>
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Motion</span>
+                      <strong>{blueprint.motionSystem.intensity}</strong>
+                      <p>{blueprint.motionSystem.revealBehavior}</p>
+                    </article>
+                  </div>
+                ) : (
+                  <article id="insights-panel-blueprint" role="tabpanel" aria-labelledby="insights-tab-blueprint" className="platform-rail-card">
+                    <span className="platform-rail-label">No blueprint yet</span>
+                    <strong>Generate a pass to inspect the system.</strong>
+                    <p>This drawer will show the brand, design, and motion plan once the preview is ready.</p>
+                  </article>
+                )
+              ) : null}
+
+              {decisionsTab === 'critique' ? (
+                critique ? (
+                  <article id="insights-panel-critique" role="tabpanel" aria-labelledby="insights-tab-critique" className="platform-rail-card">
+                    <span className="platform-rail-label">Critique</span>
+                    <strong>{critique.verdict}</strong>
+                    <p>{critique.summary}</p>
+                    {critique.scores.map(score => (
+                      <div key={score.label} className="platform-score-row">
+                        <span>{score.label}</span>
+                        <strong>{score.score}</strong>
+                      </div>
+                    ))}
+                  </article>
+                ) : (
+                  <article id="insights-panel-critique" role="tabpanel" aria-labelledby="insights-tab-critique" className="platform-rail-card">
+                    <span className="platform-rail-label">No critique yet</span>
+                    <strong>Run a pass to review the critic notes.</strong>
+                    <p>The critique summary and scores will appear here after generation finishes.</p>
+                  </article>
+                )
+              ) : null}
+
+              {decisionsTab === 'decisions' ? (
+                decisions.length > 0 ? (
+                  <div id="insights-panel-decisions" role="tabpanel" aria-labelledby="insights-tab-decisions">
+                    {decisions.map(decision => (
+                      <article key={`${decision.label}-${decision.value}`} className="platform-rail-card">
+                        <span className="platform-rail-label">{decision.label}</span>
+                        <strong>{decision.value}</strong>
+                        {decision.agent ? <span className="platform-rail-agent">↳ {decision.agent}</span> : null}
+                        <p>{decision.reason}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <article id="insights-panel-decisions" role="tabpanel" aria-labelledby="insights-tab-decisions" className="platform-rail-card">
+                    <span className="platform-rail-label">No decisions yet</span>
+                    <strong>Open this tab after a pass completes.</strong>
+                    <p>Agent-attributed decisions will collect here once the generation is finished.</p>
+                  </article>
+                )
+              ) : null}
+            </div>
           </aside>
         </main>
+        {isFullscreenPreviewOpen && html ? (
+          <FullscreenPreviewOverlay
+            html={html}
+            title="Fullscreen preview"
+            onClose={() => setIsFullscreenPreviewOpen(false)}
+          />
+        ) : null}
       </div>
     </BuilderErrorBoundary>
+  )
+}
+
+function SliderField({
+  label,
+  value,
+  unit,
+  min,
+  max,
+  step,
+  fallback,
+  onChange,
+}: {
+  label: string
+  value: string
+  unit: string
+  min: number
+  max: number
+  step: number
+  fallback: number
+  onChange: (next: string) => void
+}) {
+  const parsed = Number.parseFloat(value)
+  const current = Number.isFinite(parsed) ? parsed : fallback
+  const clamped = Math.min(Math.max(current, min), max)
+  const readout = unit === '' ? clamped.toFixed(step < 0.1 ? 2 : step < 1 ? 1 : 0) : `${clamped}${unit}`
+  return (
+    <label className="platform-field platform-field--slider">
+      <span className="platform-field-head">
+        <span className="platform-field-label">{label}</span>
+        <span className="platform-field-readout">{readout}</span>
+      </span>
+      <input
+        className="platform-range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={clamped}
+        onChange={event => {
+          const next = Number.parseFloat(event.target.value)
+          onChange(unit === '' ? String(next) : `${next}${unit}`)
+        }}
+      />
+    </label>
   )
 }
 
@@ -2503,11 +2748,25 @@ export function EditorPage() {
   const [textValues, setTextValues] = useState<Record<string, string>>({})
   const [textStyles, setTextStyles] = useState<Record<string, EditableTextStyle>>({})
   const [imageValues, setImageValues] = useState<Record<string, string>>({})
+  const [imageStyles, setImageStyles] = useState<Record<string, EditableImageStyle>>({})
+  const [sectionStyles, setSectionStyles] = useState<Record<string, EditableSectionStyle>>({})
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null)
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
   const [accentOverride, setAccentOverride] = useState('#C9A84C')
   const [editorReady, setEditorReady] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [mobileSheet, setMobileSheet] = useState<'sections' | 'inspector' | 'theme' | null>(null)
+  const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set())
+  function toggleSectionExpanded(id: string) {
+    setExpandedSections(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const editorContextRef = useRef<EditorContext | null>(null)
@@ -2529,10 +2788,14 @@ export function EditorPage() {
     setEditorModel(nextModel)
     const initialText = Object.fromEntries(nextModel.textItems.map(item => [item.id, item.text]))
     const initialImage = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.src]))
+    const initialImageStyles = Object.fromEntries(nextModel.imageItems.map(item => [item.id, item.baseStyle]))
+    const initialSectionStyles = Object.fromEntries(nextModel.sectionItems.map(item => [item.id, item.baseStyle]))
     const initialAccent = saved.metadata?.palette?.accent || '#C9A84C'
     setTextValues(initialText)
     setTextStyles(Object.fromEntries(nextModel.textItems.map(item => [item.id, item.baseStyle])))
     setImageValues(initialImage)
+    setImageStyles(initialImageStyles)
+    setSectionStyles(initialSectionStyles)
     setAccentOverride(initialAccent)
     // Seed the edit-log baseline so the initial hydrated values aren't logged
     // as spurious edits on first render.
@@ -2559,32 +2822,36 @@ export function EditorPage() {
       })
   }, [])
 
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (!event.data || event.data.source !== 'irie-editor') return
-      if (event.data.type === 'select-text' && typeof event.data.id === 'string') {
-        setSelectedTextId(event.data.id)
-        setSelectedImageId(null)
-      }
-      if (event.data.type === 'select-image' && typeof event.data.id === 'string') {
-        setSelectedImageId(event.data.id)
-        setSelectedTextId(null)
-      }
-      if (event.data.type === 'text-change' && typeof event.data.id === 'string' && typeof event.data.text === 'string') {
-        setTextValues(prev => ({ ...prev, [event.data.id]: event.data.text }))
-      }
-    }
+  function withEditorDocument(callback: (doc: Document) => void) {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    callback(doc)
+  }
 
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  function clearFrameSelection(doc: Document) {
+    doc.querySelectorAll('.is-irie-editor-selected').forEach(node => node.classList.remove('is-irie-editor-selected'))
+  }
+
+  function selectFrameNode(node: HTMLElement | null) {
+    withEditorDocument(doc => {
+      clearFrameSelection(doc)
+      if (!node) return
+      node.classList.add('is-irie-editor-selected')
+      node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    })
+  }
 
   useEffect(() => {
-    const contentWindow = iframeRef.current?.contentWindow
-    const baseAccent = generation?.metadata?.palette?.accent || '#C9A84C'
-    if (!contentWindow) return
-    contentWindow.postMessage({ source: 'irie-editor-parent', type: 'set-accent', value: accentOverride, base: baseAccent }, '*')
-  }, [accentOverride, generation])
+    withEditorDocument(doc => {
+      const previous = doc.documentElement.getAttribute('data-irie-current-accent') || generation?.metadata?.palette?.accent || '#C9A84C'
+      const html = replaceColorTokens(doc.documentElement.outerHTML, previous, accentOverride)
+      doc.open()
+      doc.write(`<!DOCTYPE html>\n${html}`)
+      doc.close()
+      doc.documentElement.setAttribute('data-irie-current-accent', accentOverride)
+      syncComputedStylesFromFrame()
+    })
+  }, [accentOverride])
 
   useEffect(() => {
     if (!editorReady || !generation || !editorModel) return
@@ -2594,6 +2861,8 @@ export function EditorPage() {
       textValues,
       textStyles,
       imageValues,
+      imageStyles,
+      sectionStyles,
       baseAccent,
       accentOverride,
     )
@@ -2605,7 +2874,7 @@ export function EditorPage() {
         : generation.metadata,
     }
     writeStorage(LAST_GENERATION_STORAGE_KEY, nextSnapshot)
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageStyles, imageValues, sectionStyles, textStyles, textValues])
 
   // Debounced edit logger: diffs the current editor state against the last
   // logged baseline, INSERTs one builder_edits row per change, and UPDATEs the
@@ -2636,6 +2905,8 @@ export function EditorPage() {
         textValues,
         textStyles,
         imageValues,
+        imageStyles,
+        sectionStyles,
         baseAccent,
         accentOverride,
       )
@@ -2661,40 +2932,103 @@ export function EditorPage() {
     return () => {
       if (editLogTimerRef.current) clearTimeout(editLogTimerRef.current)
     }
-  }, [accentOverride, editorModel, editorReady, generation, imageValues, textStyles, textValues])
+  }, [accentOverride, editorModel, editorReady, generation, imageStyles, imageValues, sectionStyles, textStyles, textValues])
+
+  function isMobileReviewViewport() {
+    return typeof window !== 'undefined' && window.innerWidth <= 640
+  }
 
   function focusTextItem(id: string) {
     setSelectedTextId(id)
     setSelectedImageId(null)
+    setSelectedSectionId(null)
     setInspectorTab('content')
-    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-text', id }, '*')
+    if (isMobileReviewViewport()) setMobileSheet('inspector')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.setAttribute('contenteditable', 'true')
+        node.focus()
+      }
+    })
   }
 
   function updateSelectedTextValue(value: string) {
     if (!selectedTextId) return
     setTextValues(prev => ({ ...prev, [selectedTextId]: value }))
-    iframeRef.current?.contentWindow?.postMessage(
-      { source: 'irie-editor-parent', type: 'replace-text', id: selectedTextId, text: value },
-      '*',
-    )
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${selectedTextId}"]`)
+      if (node instanceof HTMLElement) node.textContent = value
+    })
   }
 
   function updateSelectedTextStyle<K extends keyof EditableTextStyle>(key: K, value: EditableTextStyle[K]) {
     if (!selectedTextId) return
     const nextStyle = { ...(textStyles[selectedTextId] || DEFAULT_TEXT_STYLE), [key]: value }
     setTextStyles(prev => ({ ...prev, [selectedTextId]: nextStyle }))
-    iframeRef.current?.contentWindow?.postMessage(
-      { source: 'irie-editor-parent', type: 'set-text-style', id: selectedTextId, style: nextStyle },
-      '*',
-    )
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-edit-id="${selectedTextId}"]`)
+      if (node) applyTextStyleToElement(node, nextStyle)
+    })
   }
 
   function focusImageItem(id: string) {
     setSelectedImageId(id)
     setSelectedTextId(null)
-    setInspectorTab('layout')
-    iframeRef.current?.contentWindow?.postMessage({ source: 'irie-editor-parent', type: 'focus-image', id }, '*')
+    setSelectedSectionId(null)
+    setInspectorTab('content')
+    if (isMobileReviewViewport()) setMobileSheet('inspector')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-image-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    })
+  }
+
+  function focusSectionItem(id: string) {
+    setSelectedSectionId(id)
+    setSelectedTextId(null)
+    setSelectedImageId(null)
+    setInspectorTab('style')
+    if (isMobileReviewViewport()) setMobileSheet('inspector')
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-section-id="${id}"]`)
+      if (node instanceof HTMLElement) {
+        clearFrameSelection(doc)
+        node.classList.add('is-irie-editor-selected')
+        node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    })
+  }
+
+  function triggerImageReplace() {
+    if (isMobileReviewViewport()) setMobileSheet('inspector')
     uploadRef.current?.click()
+  }
+
+  function updateSelectedImageStyle<K extends keyof EditableImageStyle>(key: K, value: EditableImageStyle[K]) {
+    if (!selectedImageId) return
+    const nextStyle = { ...(imageStyles[selectedImageId] || DEFAULT_IMAGE_STYLE), [key]: value }
+    setImageStyles(prev => ({ ...prev, [selectedImageId]: nextStyle }))
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-image-id="${selectedImageId}"]`)
+      if (node) applyImageStyleToElement(node, nextStyle)
+    })
+  }
+
+  function updateSelectedSectionStyle<K extends keyof EditableSectionStyle>(key: K, value: EditableSectionStyle[K]) {
+    if (!selectedSectionId) return
+    const nextStyle = { ...(sectionStyles[selectedSectionId] || DEFAULT_SECTION_STYLE), [key]: value }
+    setSectionStyles(prev => ({ ...prev, [selectedSectionId]: nextStyle }))
+    withEditorDocument(doc => {
+      const node = doc.querySelector(`[data-irie-section-id="${selectedSectionId}"]`)
+      if (node) applySectionStyleToElement(node, nextStyle)
+    })
   }
 
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
@@ -2705,12 +3039,10 @@ export function EditorPage() {
       const result = typeof reader.result === 'string' ? reader.result : ''
       if (!result) return
       setImageValues(prev => ({ ...prev, [selectedImageId]: result }))
-      iframeRef.current?.contentWindow?.postMessage({
-        source: 'irie-editor-parent',
-        type: 'replace-image',
-        id: selectedImageId,
-        src: result,
-      }, '*')
+      withEditorDocument(doc => {
+        const node = doc.querySelector(`[data-irie-image-id="${selectedImageId}"]`)
+        if (node instanceof HTMLImageElement) node.src = result
+      })
     }
     reader.readAsDataURL(file)
     event.target.value = ''
@@ -2724,6 +3056,8 @@ export function EditorPage() {
       textValues,
       textStyles,
       imageValues,
+      imageStyles,
+      sectionStyles,
       baseAccent,
       accentOverride,
     )
@@ -2739,7 +3073,11 @@ export function EditorPage() {
     const doc = iframeRef.current?.contentDocument
     if (!doc || !editorModel) return
     const computedStyles = extractEditableTextStyles(doc)
+    const computedImageStyles = extractEditableImageStyles(doc)
+    const computedSectionStyles = extractEditableSectionStyles(doc)
     setTextStyles(computedStyles)
+    setImageStyles(computedImageStyles)
+    setSectionStyles(computedSectionStyles)
     if (prevEditStateRef.current) {
       prevEditStateRef.current = {
         ...prevEditStateRef.current,
@@ -2754,18 +3092,94 @@ export function EditorPage() {
               ...item,
               baseStyle: computedStyles[item.id] || item.baseStyle,
             })),
+            imageItems: prev.imageItems.map(item => ({
+              ...item,
+              baseStyle: computedImageStyles[item.id] || item.baseStyle,
+            })),
+            sectionItems: prev.sectionItems.map(item => ({
+              ...item,
+              baseStyle: computedSectionStyles[item.id] || item.baseStyle,
+            })),
           }
         : prev
     ))
+    doc.removeEventListener('click', handleFrameClick)
+    doc.removeEventListener('input', handleFrameInput)
+    doc.addEventListener('click', handleFrameClick)
+    doc.addEventListener('input', handleFrameInput)
     setLoaded(true)
+  }
+
+  function handleFrameClick(event: Event) {
+    const target = event.target
+    if (!(target instanceof Element)) return
+
+    const textNode = target.closest('[data-irie-editable="text"]')
+    if (textNode instanceof HTMLElement) {
+      const id = textNode.getAttribute('data-irie-edit-id')
+      if (!id) return
+      focusTextItem(id)
+      return
+    }
+
+    const imageNode = target.closest('[data-irie-image-id]')
+    if (imageNode instanceof HTMLElement) {
+      const id = imageNode.getAttribute('data-irie-image-id')
+      if (!id) return
+      focusImageItem(id)
+      return
+    }
+
+    const sectionNode = target.closest('[data-irie-section-id]')
+    if (sectionNode instanceof HTMLElement) {
+      const id = sectionNode.getAttribute('data-irie-section-id')
+      if (!id) return
+      focusSectionItem(id)
+    }
+  }
+
+  function handleFrameInput(event: Event) {
+    const target = event.target
+    if (!(target instanceof HTMLElement)) return
+    const textNode = target.closest('[data-irie-editable="text"]')
+    if (!(textNode instanceof HTMLElement)) return
+    const id = textNode.getAttribute('data-irie-edit-id')
+    if (!id) return
+    setTextValues(prev => ({ ...prev, [id]: textNode.textContent || '' }))
   }
 
   const selectedTextItem = editorModel?.textItems.find(item => item.id === selectedTextId) || null
   const selectedImageItem = editorModel?.imageItems.find(item => item.id === selectedImageId) || null
+  const selectedSectionItem = editorModel?.sectionItems.find(item => item.id === selectedSectionId) || null
   const selectedTextStyle = selectedTextId ? (textStyles[selectedTextId] || DEFAULT_TEXT_STYLE) : DEFAULT_TEXT_STYLE
+  const selectedImageStyle = selectedImageId ? (imageStyles[selectedImageId] || DEFAULT_IMAGE_STYLE) : DEFAULT_IMAGE_STYLE
+  const selectedSectionStyle = selectedSectionId ? (sectionStyles[selectedSectionId] || DEFAULT_SECTION_STYLE) : DEFAULT_SECTION_STYLE
   const sectionGroups = editorModel ? groupTextItemsBySection(editorModel.textItems) : []
   const imageSectionGroups = editorModel ? groupImageItemsBySection(editorModel.imageItems) : []
   const editorObjectCount = (editorModel?.textItems.length || 0) + (editorModel?.imageItems.length || 0)
+
+  const activeSectionId =
+    selectedSectionItem?.id ||
+    selectedTextItem?.sectionId ||
+    selectedImageItem?.sectionId ||
+    null
+
+  useEffect(() => {
+    if (!activeSectionId) return
+    setExpandedSections(prev => {
+      if (prev.has(activeSectionId)) return prev
+      const next = new Set(prev)
+      next.add(activeSectionId)
+      return next
+    })
+  }, [activeSectionId])
+  const availableInspectorTabs = getAvailableInspectorTabs({ selectedTextItem, selectedImageItem, selectedSectionItem })
+
+  useEffect(() => {
+    if (!availableInspectorTabs.includes(inspectorTab)) {
+      setInspectorTab(availableInspectorTabs[0] || 'content')
+    }
+  }, [availableInspectorTabs, inspectorTab])
 
   return (
     <BuilderErrorBoundary>
@@ -2780,88 +3194,130 @@ export function EditorPage() {
               <button type="button" className="platform-secondary-btn" onClick={downloadEditedHtml} disabled={!editorModel}>
                 Download HTML
               </button>
-              <Link href="/publish" className="platform-primary-btn">Publish →</Link>
+              <Link href="/publish" className="platform-primary-btn">Export →</Link>
             </div>
           )}
         />
-        <main className="platform-page platform-page--editor">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--editor">
           {generation?.html && editorModel ? (
             <section className="platform-editor-layout">
-              <aside className="platform-editor-sidebar">
+              {mobileSheet ? <button type="button" className="platform-drawer-backdrop platform-drawer-backdrop--mobile" aria-label="Close mobile editor panel" onClick={() => setMobileSheet(null)} /> : null}
+              <aside className={`platform-editor-sidebar ${mobileSheet === 'sections' || mobileSheet === 'theme' ? 'is-mobile-open' : ''}`}>
                 <div className="platform-editor-header">
                   <div className="platform-editor-workspace">
                     <strong>{generation.blueprint?.brandCore?.brandName || 'Current Site'}</strong>
                     <span>{sectionGroups.length} sections · {editorObjectCount} editable objects</span>
                   </div>
-                  <span className="platform-kicker">Editor</span>
+                  <div className="platform-editor-header-actions">
+                    <span className="platform-kicker">Editor</span>
+                    <button type="button" className="platform-sheet-close" onClick={() => setMobileSheet(null)} aria-label="Close section panel">
+                      Close
+                    </button>
+                  </div>
                 </div>
 
-                <div className="platform-pill-row platform-pill-row--compact">
-                  <button type="button" className={`platform-pill ${sidebarTab === 'content' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('content')}>Content</button>
-                  <button type="button" className={`platform-pill ${sidebarTab === 'media' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('media')}>Media</button>
-                  <button type="button" className={`platform-pill ${sidebarTab === 'theme' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('theme')}>Theme</button>
+                <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Editor panels">
+                  <button type="button" id="editor-tab-content" role="tab" aria-label="Open content panel" aria-selected={sidebarTab === 'content'} aria-controls="editor-panel-content" className={`platform-pill ${sidebarTab === 'content' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('content')}>Content</button>
+                  <button type="button" id="editor-tab-media" role="tab" aria-label="Open media panel" aria-selected={sidebarTab === 'media'} aria-controls="editor-panel-media" className={`platform-pill ${sidebarTab === 'media' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('media')}>Media</button>
+                  <button type="button" id="editor-tab-theme" role="tab" aria-label="Open theme panel" aria-selected={sidebarTab === 'theme'} aria-controls="editor-panel-theme" className={`platform-pill ${sidebarTab === 'theme' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('theme')}>Theme</button>
                 </div>
 
                 {sidebarTab === 'content' ? (
-                <div className="platform-editor-panel">
+                <div id="editor-panel-content" role="tabpanel" aria-labelledby="editor-tab-content" className="platform-editor-panel">
                   <span className="platform-kicker">Structure</span>
                   <div className="platform-editor-sections">
-                    {sectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-group">
-                        <div className="platform-editor-section-head">
-                          <strong>{section.label}</strong>
-                          <span>{section.items.length} text objects</span>
-                        </div>
-                        <div className="platform-editor-list">
-                          {section.items.map(item => (
-                            <button
-                              key={item.id}
+                    {sectionGroups.map(section => {
+                      const isOpen = expandedSections.has(section.id)
+                      return (
+                      <div key={section.id} className={`platform-editor-section-group ${isOpen ? 'is-open' : ''}`}>
+                        <div className={`platform-editor-section-head ${selectedSectionId === section.id ? 'is-active' : ''}`}>
+                          <button
                             type="button"
-                            className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
-                            onClick={() => focusTextItem(item.id)}
+                            className="platform-editor-section-toggle"
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.label}`}
+                            onClick={() => toggleSectionExpanded(section.id)}
                           >
-                              <strong>{item.label}</strong>
-                              <span>{item.kind} · {(textValues[item.id] || item.text).slice(0, 42)}</span>
-                            </button>
-                          ))}
+                            <span className={`platform-editor-section-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true">›</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="platform-editor-section-name"
+                            onClick={() => { focusSectionItem(section.id); if (!isOpen) toggleSectionExpanded(section.id) }}
+                          >
+                            <strong>{section.label}</strong>
+                            <span>{section.items.length} text objects</span>
+                          </button>
                         </div>
+                        {isOpen ? (
+                          <div className="platform-editor-list">
+                            {section.items.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
+                                onClick={() => focusTextItem(item.id)}
+                              >
+                                <strong>{item.label}</strong>
+                                <span>{item.kind} · {(textValues[item.id] || item.text).slice(0, 42)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
                 ) : null}
 
                 {sidebarTab === 'media' ? (
-                <div className="platform-editor-panel">
+                <div id="editor-panel-media" role="tabpanel" aria-labelledby="editor-tab-media" className="platform-editor-panel">
                   <span className="platform-kicker">Images</span>
                   <div className="platform-editor-sections">
-                    {editorModel.imageItems.length ? imageSectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-group">
+                    {editorModel.imageItems.length ? imageSectionGroups.map(section => {
+                      const isOpen = expandedSections.has(section.id)
+                      return (
+                      <div key={section.id} className={`platform-editor-section-group ${isOpen ? 'is-open' : ''}`}>
                         <div className="platform-editor-section-head">
-                          <strong>{section.label}</strong>
-                          <span>{section.items.length} media objects</span>
-                        </div>
-                        <div className="platform-editor-list">
-                          {section.items.map(item => (
-                            <button
-                              key={item.id}
+                          <button
                             type="button"
-                            className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
-                            onClick={() => focusImageItem(item.id)}
+                            className="platform-editor-section-toggle"
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.label}`}
+                            onClick={() => toggleSectionExpanded(section.id)}
                           >
-                              <strong>{item.label}</strong>
-                              <span>image slot · replace asset</span>
-                            </button>
-                          ))}
+                            <span className={`platform-editor-section-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true">›</span>
+                          </button>
+                          <div className="platform-editor-section-name">
+                            <strong>{section.label}</strong>
+                            <span>{section.items.length} media objects</span>
+                          </div>
                         </div>
+                        {isOpen ? (
+                          <div className="platform-editor-list">
+                            {section.items.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
+                                onClick={() => focusImageItem(item.id)}
+                              >
+                                <strong>{item.label}</strong>
+                                <span>image slot · replace asset</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    )) : <span className="platform-helper">No image slots detected.</span>}
+                      )
+                    }) : <span className="platform-helper">No image slots detected.</span>}
                   </div>
                 </div>
                 ) : null}
 
                 {sidebarTab === 'theme' ? (
-                <div className="platform-editor-panel">
+                <div id="editor-panel-theme" role="tabpanel" aria-labelledby="editor-tab-theme" className="platform-editor-panel">
                   <span className="platform-kicker">Theme</span>
                   <div className="platform-color-grid platform-color-grid--editor">
                     <div className="platform-color-card platform-color-card--editor is-readonly">
@@ -2890,44 +3346,127 @@ export function EditorPage() {
               </aside>
 
               <div className="platform-editor-preview">
+                <div className="platform-editor-preview-toolbar">
+                  <div className="platform-editor-preview-head">
+                    <span className="platform-kicker">Preview</span>
+                    <span className="platform-mobile-review-note">For full editing controls, switch to desktop.</span>
+                  </div>
+                  <div className="platform-flow-header-button-row">
+                    <button type="button" className="platform-secondary-btn" onClick={() => setIsFullscreenPreviewOpen(true)}>
+                      Fullscreen
+                    </button>
+                  </div>
+                </div>
                 <iframe
                   ref={iframeRef}
                   title="Editable preview"
                   className="platform-preview-frame platform-preview-frame--editor"
-                  sandbox="allow-scripts allow-same-origin"
+                  sandbox="allow-same-origin"
                   srcDoc={editorModel.frameHtml}
                   onLoad={syncComputedStylesFromFrame}
                 />
               </div>
 
-              <aside className="platform-editor-inspector">
+              <aside className={`platform-editor-inspector ${mobileSheet === 'inspector' ? 'is-mobile-open' : ''}`}>
                 <div className="platform-editor-panel">
-                  <span className="platform-kicker">Inspector</span>
-                  <div className="platform-pill-row platform-pill-row--compact">
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'content' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('content')}
-                    >
-                      Content
-                    </button>
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'style' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('style')}
-                    >
-                      Style
-                    </button>
-                    <button
-                      type="button"
-                      className={`platform-pill ${inspectorTab === 'layout' ? 'platform-pill--active' : ''}`}
-                      onClick={() => setInspectorTab('layout')}
-                    >
-                      Layout
+                  <div className="platform-editor-header-actions">
+                    <span className="platform-kicker">Inspector</span>
+                    <button type="button" className="platform-sheet-close" onClick={() => setMobileSheet(null)} aria-label="Close inspector panel">
+                      Close
                     </button>
                   </div>
-                  {selectedTextItem ? (
-                    <div className="platform-editor-controls">
+                  <div className="platform-pill-row platform-pill-row--compact" role="tablist" aria-label="Inspector panels">
+                    {availableInspectorTabs.map(tab => (
+                      <button
+                        key={tab}
+                        id={`inspector-tab-${tab}`}
+                        type="button"
+                        role="tab"
+                        aria-label={`Open ${tab} inspector panel`}
+                        aria-selected={inspectorTab === tab}
+                        aria-controls={`inspector-panel-${tab}`}
+                        className={`platform-pill ${inspectorTab === tab ? 'platform-pill--active' : ''}`}
+                        onClick={() => setInspectorTab(tab)}
+                      >
+                        {tab[0].toUpperCase() + tab.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedSectionItem ? (
+                    <div id={`inspector-panel-${inspectorTab}`} role="tabpanel" aria-labelledby={`inspector-tab-${inspectorTab}`} className="platform-editor-controls">
+                      <div className="platform-editor-selected">
+                        <strong>{selectedSectionItem.label}</strong>
+                        <span>{selectedSectionItem.tagName.toUpperCase()} · SECTION</span>
+                      </div>
+
+                      {inspectorTab === 'content' ? (
+                        <div className="platform-control-grid">
+                          <label className="platform-field">
+                            <span className="platform-field-label">Visibility</span>
+                            <div className="platform-segmented">
+                              <button type="button" className={`platform-segmented-btn ${!selectedSectionStyle.hidden ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('hidden', false)}>Show</button>
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.hidden ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('hidden', true)}>Hide</button>
+                            </div>
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Max Width</span>
+                            <div className="platform-segmented">
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.maxWidthMode === 'full' ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('maxWidthMode', 'full')}>Full</button>
+                              <button type="button" className={`platform-segmented-btn ${selectedSectionStyle.maxWidthMode === 'constrained' ? 'is-active' : ''}`} onClick={() => updateSelectedSectionStyle('maxWidthMode', 'constrained')}>Constrained</button>
+                            </div>
+                          </label>
+                        </div>
+                      ) : null}
+
+                      {inspectorTab === 'style' ? (
+                        <>
+                          <div className="platform-control-grid">
+                            <SliderField
+                              label="Padding Top"
+                              value={selectedSectionStyle.paddingTop}
+                              unit="px"
+                              min={0}
+                              max={240}
+                              step={4}
+                              fallback={72}
+                              onChange={next => updateSelectedSectionStyle('paddingTop', next)}
+                            />
+                            <SliderField
+                              label="Padding Bottom"
+                              value={selectedSectionStyle.paddingBottom}
+                              unit="px"
+                              min={0}
+                              max={240}
+                              step={4}
+                              fallback={72}
+                              onChange={next => updateSelectedSectionStyle('paddingBottom', next)}
+                            />
+                          </div>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Background</span>
+                            <div className="platform-color-input">
+                              <input type="color" value={selectedSectionStyle.backgroundColor || '#080808'} onChange={event => updateSelectedSectionStyle('backgroundColor', event.target.value)} />
+                              <input className="platform-input" type="text" value={selectedSectionStyle.backgroundColor} placeholder="#080808" onChange={event => updateSelectedSectionStyle('backgroundColor', event.target.value)} />
+                            </div>
+                          </label>
+                        </>
+                      ) : null}
+
+                      {inspectorTab === 'layout' ? (
+                        <>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Background Image URL</span>
+                            <input className="platform-input" type="url" value={selectedSectionStyle.backgroundImage} placeholder="https://…" onChange={event => updateSelectedSectionStyle('backgroundImage', event.target.value)} />
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Overlay Opacity</span>
+                            <input className="platform-input" type="range" min="0" max="1" step="0.05" value={selectedSectionStyle.overlayOpacity} onChange={event => updateSelectedSectionStyle('overlayOpacity', event.target.value)} />
+                          </label>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : selectedTextItem ? (
+                    <div id={`inspector-panel-${inspectorTab}`} role="tabpanel" aria-labelledby={`inspector-tab-${inspectorTab}`} className="platform-editor-controls">
                       <div className="platform-editor-selected">
                         <strong>{selectedTextItem.label}</strong>
                         <span>{selectedTextItem.sectionLabel} · {selectedTextItem.tagName.toUpperCase()}</span>
@@ -2980,38 +3519,38 @@ export function EditorPage() {
                               </select>
                             </label>
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Size</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.fontSize}
-                                placeholder="e.g. 24px"
-                                onChange={event => updateSelectedTextStyle('fontSize', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Size"
+                              value={selectedTextStyle.fontSize}
+                              unit="px"
+                              min={8}
+                              max={120}
+                              step={1}
+                              fallback={16}
+                              onChange={next => updateSelectedTextStyle('fontSize', next)}
+                            />
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Line Height</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.lineHeight}
-                                placeholder="e.g. 1.4"
-                                onChange={event => updateSelectedTextStyle('lineHeight', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Line Height"
+                              value={selectedTextStyle.lineHeight}
+                              unit=""
+                              min={0.8}
+                              max={2.5}
+                              step={0.05}
+                              fallback={1.4}
+                              onChange={next => updateSelectedTextStyle('lineHeight', next)}
+                            />
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Letter Spacing</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.letterSpacing}
-                                placeholder="e.g. 0.04em"
-                                onChange={event => updateSelectedTextStyle('letterSpacing', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Letter Spacing"
+                              value={selectedTextStyle.letterSpacing}
+                              unit="em"
+                              min={-0.05}
+                              max={0.3}
+                              step={0.01}
+                              fallback={0}
+                              onChange={next => updateSelectedTextStyle('letterSpacing', next)}
+                            />
 
                             <label className="platform-field">
                               <span className="platform-field-label">Text Transform</span>
@@ -3120,86 +3659,102 @@ export function EditorPage() {
                         </>
                       ) : null}
 
-                      {inspectorTab === 'layout' ? (
-                        selectedTextItem.isAction ? (
+                      {inspectorTab === 'layout' && selectedTextItem.isAction ? (
                           <div className="platform-control-grid">
-                            <label className="platform-field">
-                              <span className="platform-field-label">Radius</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.borderRadius}
-                                placeholder="e.g. 18px"
-                                onChange={event => updateSelectedTextStyle('borderRadius', event.target.value)}
-                              />
-                            </label>
-
-                            <label className="platform-field">
-                              <span className="platform-field-label">Horizontal Padding</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.paddingInline}
-                                placeholder="e.g. 24px"
-                                onChange={event => updateSelectedTextStyle('paddingInline', event.target.value)}
-                              />
-                            </label>
-
-                            <label className="platform-field">
-                              <span className="platform-field-label">Vertical Padding</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.paddingBlock}
-                                placeholder="e.g. 14px"
-                                onChange={event => updateSelectedTextStyle('paddingBlock', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Radius"
+                              value={selectedTextStyle.borderRadius}
+                              unit="px"
+                              min={0}
+                              max={40}
+                              step={1}
+                              fallback={8}
+                              onChange={next => updateSelectedTextStyle('borderRadius', next)}
+                            />
+                            <SliderField
+                              label="Horizontal Padding"
+                              value={selectedTextStyle.paddingInline}
+                              unit="px"
+                              min={0}
+                              max={64}
+                              step={1}
+                              fallback={24}
+                              onChange={next => updateSelectedTextStyle('paddingInline', next)}
+                            />
+                            <SliderField
+                              label="Vertical Padding"
+                              value={selectedTextStyle.paddingBlock}
+                              unit="px"
+                              min={0}
+                              max={40}
+                              step={1}
+                              fallback={14}
+                              onChange={next => updateSelectedTextStyle('paddingBlock', next)}
+                            />
                           </div>
-                        ) : (
-                          <div className="platform-editor-empty">
-                            <strong>Layout controls are the next SaaS layer.</strong>
-                            <span>This object model is now section-aware, so the next step is safe to add spacing, width, stack order, button chrome, and section background controls without rebuilding the editor shell.</span>
-                          </div>
-                        )
                       ) : null}
                     </div>
                   ) : selectedImageItem ? (
-                    <div className="platform-editor-controls">
+                    <div id={`inspector-panel-${inspectorTab}`} role="tabpanel" aria-labelledby={`inspector-tab-${inspectorTab}`} className="platform-editor-controls">
                       <div className="platform-editor-selected">
                         <strong>{selectedImageItem.label}</strong>
                         <span>{selectedImageItem.sectionLabel} · IMAGE</span>
                       </div>
 
                       {inspectorTab === 'content' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Media content is wired.</strong>
-                          <span>Use the image list or click the canvas to replace this asset now. The current editor keeps the existing crop and layout while swapping the source.</span>
-                        </div>
+                        <>
+                          <div className="platform-image-thumb">
+                            <img src={imageValues[selectedImageItem.id] || selectedImageItem.src} alt={selectedImageStyle.alt || selectedImageItem.alt || ''} />
+                          </div>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Alt text</span>
+                            <input className="platform-input" type="text" value={selectedImageStyle.alt} onChange={event => updateSelectedImageStyle('alt', event.target.value)} />
+                          </label>
+                          <button type="button" className="platform-primary-btn" onClick={triggerImageReplace}>
+                            Replace image
+                          </button>
+                        </>
                       ) : null}
 
                       {inspectorTab === 'style' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Image styling is the next object set.</strong>
-                          <span>This inspector is ready for radius, overlay, shadow, and framing controls once we add the first media style pass.</span>
-                        </div>
+                        <>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Fit</span>
+                            <div className="platform-segmented">
+                              {(['cover', 'contain', 'fill'] as const).map(option => (
+                                <button key={option} type="button" className={`platform-segmented-btn ${selectedImageStyle.objectFit === option ? 'is-active' : ''}`} onClick={() => updateSelectedImageStyle('objectFit', option)}>
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          </label>
+                          <label className="platform-field">
+                            <span className="platform-field-label">Position</span>
+                            <div className="platform-segmented">
+                              {(['top', 'center', 'bottom'] as const).map(option => (
+                                <button key={option} type="button" className={`platform-segmented-btn ${selectedImageStyle.objectPosition === option ? 'is-active' : ''}`} onClick={() => updateSelectedImageStyle('objectPosition', option)}>
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
+                          </label>
+                          <SliderField
+                            label="Radius"
+                            value={selectedImageStyle.borderRadius}
+                            unit="px"
+                            min={0}
+                            max={40}
+                            step={1}
+                            fallback={0}
+                            onChange={next => updateSelectedImageStyle('borderRadius', next)}
+                          />
+                        </>
                       ) : null}
-
-                      {inspectorTab === 'layout' ? (
-                        <div className="platform-editor-empty">
-                          <strong>Layout controls are staged for media too.</strong>
-                          <span>The section-aware model gives us a stable place to add object-fit, crop focus, aspect ratio, and width controls without redesigning the UI.</span>
-                        </div>
-                      ) : null}
-
-                      <button type="button" className="platform-primary-btn" onClick={() => focusImageItem(selectedImageItem.id)}>
-                        Replace image
-                      </button>
                     </div>
                   ) : (
-                    <div className="platform-editor-empty">
+                    <div id={`inspector-panel-${inspectorTab}`} role="tabpanel" aria-labelledby={`inspector-tab-${inspectorTab}`} className="platform-editor-empty">
                       <strong>Select an object.</strong>
-                      <span>Pick a section item from the left rail or click the preview to edit content, style, and later layout controls from one scalable inspector.</span>
+                      <span>Pick a section, text block, or image from the left rail or click the preview to edit it.</span>
                     </div>
                   )}
                 </div>
@@ -3211,7 +3766,36 @@ export function EditorPage() {
               <p><Link href="/brief" className="platform-text-link">← Start a brief</Link></p>
             </section>
           ) : null}
+          {generation?.html && editorModel ? (
+            <div className="platform-mobile-editor-dock safe-bottom">
+              <button type="button" className="platform-primary-btn" onClick={() => { setSidebarTab('content'); setMobileSheet('sections') }}>
+                Sections
+              </button>
+              <button type="button" className="platform-secondary-btn" onClick={() => setMobileSheet('inspector')}>
+                Inspector
+              </button>
+              <button type="button" className="platform-secondary-btn" onClick={() => { setSidebarTab('theme'); setMobileSheet('theme') }}>
+                Theme
+              </button>
+            </div>
+          ) : null}
         </main>
+        {isFullscreenPreviewOpen && editorModel ? (
+          <FullscreenPreviewOverlay
+            html={buildEditedHtml(
+              editorModel.annotatedHtml,
+              textValues,
+              textStyles,
+              imageValues,
+              imageStyles,
+              sectionStyles,
+              generation?.metadata?.palette?.accent || '#C9A84C',
+              accentOverride,
+            )}
+            title="Edited preview"
+            onClose={() => setIsFullscreenPreviewOpen(false)}
+          />
+        ) : null}
       </div>
     </BuilderErrorBoundary>
   )
@@ -3219,7 +3803,6 @@ export function EditorPage() {
 
 export function PublishPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
-  const [copied, setCopied] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const publishContextRef = useRef<EditorContext | null>(null)
 
@@ -3251,29 +3834,20 @@ export function PublishPage() {
     }
   }
 
-  const embedCode = '<iframe src="https://your-hosted-page.example/page.html" width="100%" height="100%"></iframe>'
   const htmlSize = generation?.html ? new Blob([generation.html], { type: 'text/html' }).size : 0
-
-  async function copyEmbedCode() {
-    try {
-      await navigator.clipboard.writeText(embedCode)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {}
-  }
 
   return (
     <BuilderErrorBoundary>
       <BuilderPlatformStyles />
       <div className="platform-shell">
         <FlowHeader current="publish" backHref="/edit" backLabel="← Edit" />
-        <main className="platform-page platform-page--placeholder">
+        <main id={MAIN_CONTENT_ID} className="platform-page platform-page--placeholder">
           {generation?.html ? (
             <>
               <section className="platform-section-card">
                 <div className="platform-section-head">
-                  <span className="platform-kicker">Download</span>
-                  <h2>Take the HTML and host it anywhere.</h2>
+                  <span className="platform-kicker">Export</span>
+                  <h2>Download the site and host it anywhere.</h2>
                 </div>
                 <div className="platform-publish-actions">
                   <button
@@ -3289,31 +3863,28 @@ export function PublishPage() {
 
               <section className="platform-section-card">
                 <div className="platform-section-head">
-                  <span className="platform-kicker">Copy Embed</span>
-                  <h2>Drop it into any existing site.</h2>
+                  <span className="platform-kicker">What you get</span>
+                  <h2>An honest export for this pass.</h2>
                 </div>
-                <div className="platform-code-card">
-                  <code>{embedCode}</code>
+                <div className="platform-export-list">
+                  <div className="platform-export-item">
+                    <strong>Downloadable HTML</strong>
+                    <span>Take the finished markup and host it on any static platform.</span>
+                  </div>
+                  <div className="platform-export-item">
+                    <strong>Keep the design intact</strong>
+                    <span>The export preserves your copy, styling, image swaps, and section refinements.</span>
+                  </div>
+                  <div className="platform-export-item">
+                    <strong>Host it wherever you want</strong>
+                    <span>Use the downloaded file with Vercel, Netlify, Cloudflare Pages, GitHub Pages, or any static host you trust.</span>
+                  </div>
                 </div>
-                <div className="platform-publish-actions">
-                  <button type="button" className="platform-secondary-btn" onClick={copyEmbedCode}>
-                    {copied ? 'Copied' : 'Copy Code'}
-                  </button>
-                  <span className="platform-helper">Host the HTML file first, then replace the src with your URL.</span>
-                </div>
-              </section>
-
-              <section className="platform-section-card platform-section-card--muted">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">Share Preview</span>
-                  <h2>Coming soon</h2>
-                </div>
-                <p>Live URLs and custom domains are coming in the next release.</p>
               </section>
             </>
           ) : loaded ? (
             <section className="platform-empty">
-              <h2>Nothing to publish yet.</h2>
+              <h2>Nothing to export yet.</h2>
               <p><Link href="/brief" className="platform-text-link">← Start a brief</Link></p>
             </section>
           ) : null}
@@ -3327,17 +3898,20 @@ const platformCss = `
   *,*::before,*::after{box-sizing:border-box}
   :root{
     --bg:#080808;
-    --panel:#101010;
-    --panel-2:#141414;
+    --panel:#0f0f0f;
+    --panel-2:#131313;
     --line:rgba(201,168,76,0.18);
     --gold:#C9A84C;
-    --gold-soft:rgba(201,168,76,0.12);
-    --text:#FAF7F2;
-    --muted:rgba(250,247,242,0.68);
-    --muted-2:rgba(250,247,242,0.42);
+    --gold-soft:rgba(201,168,76,0.08);
+    --gold-dim:rgba(201,168,76,0.15);
+    --text:#F2EDE4;
+    --cream:#F2EDE4;
+    --muted:rgba(242,237,228,0.68);
+    --muted-2:rgba(242,237,228,0.45);
     --danger:#E37272;
-    --radius:24px;
-    --shadow:0 32px 80px rgba(0,0,0,0.35);
+    --radius:6px;
+    --radius-sm:4px;
+    --radius-lg:10px;
   }
 
   body{
@@ -3364,9 +3938,8 @@ const platformCss = `
     justify-content:space-between;
     gap:1rem;
     padding:1.2rem clamp(1.1rem, 3vw, 2.4rem);
-    border-bottom:1px solid rgba(201,168,76,0.08);
-    background:rgba(8,8,8,0.86);
-    backdrop-filter:blur(18px);
+    border-bottom:1px solid var(--line);
+    background:rgba(8,8,8,0.96);
   }
 
   .platform-wordmark{
@@ -3409,7 +3982,7 @@ const platformCss = `
   .platform-page{
     width:min(1440px, calc(100% - 2rem));
     margin:0 auto;
-    padding:1.5rem 0 3rem;
+    padding:1rem 0 1.5rem;
   }
 
   .platform-page--dashboard,
@@ -3429,14 +4002,14 @@ const platformCss = `
 
   .platform-page--generate{
     display:grid;
-    grid-template-columns:280px minmax(0,1fr) 220px;
-    gap:1rem;
+    grid-template-columns:220px minmax(0,1fr) 320px;
+    gap:0.8rem;
     align-items:stretch;
-    min-height:calc(100dvh - 8.5rem);
+    min-height:calc(100dvh - 8rem);
   }
 
   .platform-page--generate.platform-page--rail-collapsed{
-    grid-template-columns:280px minmax(0,1fr) 44px;
+    grid-template-columns:72px minmax(0,1fr) 56px;
   }
 
   .platform-kicker{
@@ -3455,10 +4028,7 @@ const platformCss = `
   .platform-decisions-rail{
     border:1px solid var(--line);
     border-radius:var(--radius);
-    background:
-      linear-gradient(180deg, rgba(201,168,76,0.04), rgba(255,255,255,0.01)),
-      var(--panel);
-    box-shadow:var(--shadow);
+    background:var(--panel);
   }
 
   .platform-hero-card,
@@ -3509,7 +4079,7 @@ const platformCss = `
 
   .platform-primary-btn{
     border:none;
-    border-radius:999px;
+    border-radius:6px;
     background:var(--gold);
     color:#0A0A0A;
     text-decoration:none;
@@ -3535,8 +4105,8 @@ const platformCss = `
 
   .platform-secondary-btn{
     border:1px solid var(--line);
-    border-radius:999px;
-    background:rgba(255,255,255,0.02);
+    border-radius:6px;
+    background:transparent;
     color:var(--text);
     padding:0.9rem 1.15rem;
     text-decoration:none;
@@ -3591,7 +4161,7 @@ const platformCss = `
 
   .platform-chip,
   .platform-pill{
-    border-radius:999px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.24);
     background:transparent;
     color:var(--muted);
@@ -3627,7 +4197,7 @@ const platformCss = `
   .platform-input,
   .platform-textarea{
     width:100%;
-    border-radius:20px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.18);
     background:var(--panel-2);
     color:var(--text);
@@ -3666,8 +4236,8 @@ const platformCss = `
 
   .platform-reference-card{
     border:1px solid rgba(201,168,76,0.16);
-    border-radius:20px;
-    background:rgba(255,255,255,0.02);
+    border-radius:8px;
+    background:var(--panel-2);
     padding:1rem;
     text-align:left;
     color:var(--text);
@@ -3703,8 +4273,8 @@ const platformCss = `
     gap:0.55rem;
     padding:1rem;
     border:1px solid rgba(201,168,76,0.12);
-    border-radius:20px;
-    background:rgba(255,255,255,0.02);
+    border-radius:8px;
+    background:var(--panel-2);
   }
 
   .platform-slider-head{
@@ -3734,7 +4304,7 @@ const platformCss = `
     display:grid;
     gap:0.7rem;
     border:1px solid rgba(201,168,76,0.12);
-    border-radius:20px;
+    border-radius:8px;
     padding:1rem;
     background:rgba(255,255,255,0.02);
   }
@@ -3796,7 +4366,7 @@ const platformCss = `
   .platform-chat-bubble{
     max-width:min(720px, 100%);
     padding:0.95rem 1rem;
-    border-radius:18px;
+    border-radius:8px;
     line-height:1.7;
   }
 
@@ -3858,7 +4428,7 @@ const platformCss = `
     gap:0.75rem;
     align-items:start;
     padding:0.9rem;
-    border-radius:18px;
+    border-radius:8px;
     background:rgba(255,255,255,0.03);
     border:1px solid transparent;
   }
@@ -3938,7 +4508,7 @@ const platformCss = `
     gap:0.9rem;
     padding:1rem 1.15rem;
     border:1px solid var(--line);
-    border-radius:24px;
+    border-radius:10px;
     background:rgba(255,255,255,0.02);
   }
 
@@ -3952,7 +4522,7 @@ const platformCss = `
     display:grid;
     gap:0.25rem;
     padding:0.85rem 0.95rem;
-    border-radius:18px;
+    border-radius:8px;
     background:rgba(255,255,255,0.03);
   }
 
@@ -3987,7 +4557,7 @@ const platformCss = `
     gap:0.7rem;
     padding:2rem;
     border:1px dashed rgba(201,168,76,0.2);
-    border-radius:24px;
+    border-radius:10px;
     background:rgba(255,255,255,0.02);
   }
 
@@ -4029,7 +4599,7 @@ const platformCss = `
   .platform-preview-panel,
   .platform-preview-single{
     border:1px solid var(--line);
-    border-radius:24px;
+    border-radius:10px;
     overflow:hidden;
     background:#050505;
     min-height:0;
@@ -4069,14 +4639,14 @@ const platformCss = `
     gap:0.65rem;
     padding:0.85rem;
     border:1px solid var(--line);
-    border-radius:22px;
+    border-radius:8px;
     background:rgba(255,255,255,0.03);
     align-content:start;
   }
 
   .platform-preview-frame--phone{
     min-height:min(48dvh, 420px);
-    border-radius:22px;
+    border-radius:8px;
     overflow:hidden;
   }
 
@@ -4103,7 +4673,7 @@ const platformCss = `
     display:grid;
     gap:0.3rem;
     padding:0.95rem 1rem;
-    border-radius:18px;
+    border-radius:8px;
     border:1px solid rgba(201,168,76,0.12);
     background:rgba(255,255,255,0.02);
   }
@@ -4148,7 +4718,7 @@ const platformCss = `
 
   .platform-rail-toggle{
     width:36px;
-    border-radius:12px;
+    border-radius:6px;
     border:1px solid var(--line);
     background:transparent;
     color:var(--gold);
@@ -4165,7 +4735,7 @@ const platformCss = `
     display:grid;
     gap:0.35rem;
     padding:0.9rem;
-    border-radius:18px;
+    border-radius:8px;
     border:1px solid rgba(201,168,76,0.12);
     background:rgba(255,255,255,0.03);
   }
@@ -4219,7 +4789,7 @@ const platformCss = `
     padding:1rem clamp(1rem, 3vw, 2.4rem);
     border-bottom:1px solid rgba(201,168,76,0.08);
     background:rgba(8,8,8,0.88);
-    backdrop-filter:blur(18px);
+    backdrop-filter:blur(8px);
   }
 
   .platform-flow-header > .platform-text-link{
@@ -4281,7 +4851,7 @@ const platformCss = `
     gap:0.55rem;
     min-height:260px;
     padding:1.4rem;
-    border-radius:28px;
+    border-radius:10px;
     border:1px solid rgba(201,168,76,0.18);
     background:
       radial-gradient(circle at top right, rgba(201,168,76,0.14), transparent 38%),
@@ -4305,7 +4875,7 @@ const platformCss = `
   .platform-project-plus{
     width:64px;
     height:64px;
-    border-radius:20px;
+    border-radius:8px;
     display:grid;
     place-items:center;
     font-size:2rem;
@@ -4326,7 +4896,7 @@ const platformCss = `
 
   .platform-recent-thumb{
     min-height:180px;
-    border-radius:22px;
+    border-radius:8px;
     overflow:hidden;
     border:1px solid rgba(201,168,76,0.16);
     background:#050505;
@@ -4346,7 +4916,7 @@ const platformCss = `
     gap:1rem;
     align-items:flex-start;
     padding:1rem 1.1rem;
-    border-radius:22px;
+    border-radius:8px;
     background:rgba(255,255,255,0.03);
     border:1px solid rgba(201,168,76,0.14);
   }
@@ -4403,7 +4973,7 @@ const platformCss = `
     display:grid;
     gap:0.85rem;
     padding:1rem;
-    border-radius:24px;
+    border-radius:10px;
     border:1px dashed rgba(201,168,76,0.28);
     background:rgba(255,255,255,0.02);
   }
@@ -4423,7 +4993,7 @@ const platformCss = `
     display:grid;
     gap:0.9rem;
     padding:1rem;
-    border-radius:20px;
+    border-radius:8px;
     background:rgba(201,168,76,0.08);
     border:1px solid rgba(201,168,76,0.18);
   }
@@ -4435,7 +5005,7 @@ const platformCss = `
 
   .platform-accordion{
     border:1px solid rgba(201,168,76,0.16);
-    border-radius:24px;
+    border-radius:10px;
     background:rgba(255,255,255,0.02);
     overflow:hidden;
   }
@@ -4472,9 +5042,9 @@ const platformCss = `
     bottom:1rem;
     z-index:20;
     border:1px solid rgba(201,168,76,0.2);
-    border-radius:26px;
+    border-radius:10px;
     background:rgba(10,10,10,0.94);
-    backdrop-filter:blur(18px);
+    backdrop-filter:blur(8px);
   }
 
   .platform-page--editor{
@@ -4484,7 +5054,7 @@ const platformCss = `
 
   .platform-editor-layout{
     display:grid;
-    grid-template-columns:260px minmax(0, 1fr) 300px;
+    grid-template-columns:220px minmax(0, 1fr) 300px;
     gap:1rem;
     min-height:calc(100dvh - 8.5rem);
   }
@@ -4493,7 +5063,7 @@ const platformCss = `
   .platform-editor-inspector,
   .platform-editor-preview{
     border:1px solid var(--line);
-    border-radius:26px;
+    border-radius:10px;
     background:
       linear-gradient(180deg, rgba(201,168,76,0.04), rgba(255,255,255,0.01)),
       var(--panel);
@@ -4538,7 +5108,7 @@ const platformCss = `
     display:grid;
     gap:0.75rem;
     padding:0.85rem 0.9rem;
-    border-radius:20px;
+    border-radius:8px;
     background:rgba(255,255,255,0.02);
     border:1px solid rgba(201,168,76,0.12);
   }
@@ -4571,19 +5141,65 @@ const platformCss = `
   .platform-editor-section-head{
     display:flex;
     align-items:center;
-    justify-content:space-between;
-    gap:0.75rem;
+    gap:0.3rem;
+    padding:0.25rem 0.1rem;
+    border-radius:4px;
+  }
+  .platform-editor-section-head.is-active{
+    background:rgba(201,168,76,0.08);
   }
 
-  .platform-editor-section-head strong{
+  .platform-editor-section-toggle{
+    flex:none;
+    width:22px;
+    height:22px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    background:transparent;
+    color:var(--muted);
+    cursor:pointer;
+    border-radius:4px;
+  }
+  .platform-editor-section-toggle:hover{color:var(--gold)}
+  .platform-editor-section-chevron{
+    display:inline-block;
+    font-size:1rem;
+    line-height:1;
+    transition:transform 0.15s ease;
+  }
+  .platform-editor-section-chevron.is-open{transform:rotate(90deg)}
+
+  .platform-editor-section-name{
+    flex:1 1 auto;
+    display:grid;
+    gap:0.1rem;
+    padding:0.15rem 0.1rem;
+    border:none;
+    background:transparent;
+    color:inherit;
+    text-align:left;
+    cursor:pointer;
+    min-width:0;
+  }
+  .platform-editor-section-name:hover strong{color:var(--gold)}
+
+  .platform-editor-section-head strong,
+  .platform-editor-section-name strong{
     font-size:0.74rem;
     letter-spacing:0.1em;
     text-transform:uppercase;
   }
 
-  .platform-editor-section-head span{
+  .platform-editor-section-head span,
+  .platform-editor-section-name span{
     color:var(--muted);
     font-size:0.7rem;
+  }
+
+  .platform-editor-section-group .platform-editor-list{
+    margin:0.3rem 0 0.2rem 1.6rem;
   }
 
   .platform-editor-list{
@@ -4598,7 +5214,7 @@ const platformCss = `
     padding:0.62rem 0.72rem;
     text-align:left;
     color:var(--text);
-    border-radius:12px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
     cursor:pointer;
@@ -4646,7 +5262,7 @@ const platformCss = `
     justify-content:space-between;
     gap:0.8rem;
     padding:0.75rem 0.9rem;
-    border-radius:16px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
   }
@@ -4686,11 +5302,54 @@ const platformCss = `
     text-transform:uppercase;
   }
 
+  .platform-field--slider{gap:0.3rem}
+  .platform-field-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.5rem;
+  }
+  .platform-field-readout{
+    color:var(--text);
+    font-family:'Syne', system-ui, sans-serif;
+    font-size:0.8rem;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0;
+  }
+  .platform-range{
+    appearance:none;
+    width:100%;
+    height:4px;
+    background:rgba(201,168,76,0.18);
+    border-radius:999px;
+    outline:none;
+    margin:0.3rem 0 0;
+  }
+  .platform-range::-webkit-slider-thumb{
+    appearance:none;
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--gold);
+    border:2px solid var(--bg);
+    cursor:pointer;
+  }
+  .platform-range::-moz-range-thumb{
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--gold);
+    border:2px solid var(--bg);
+    cursor:pointer;
+  }
+  .platform-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(201,168,76,0.3)}
+  .platform-range:focus-visible::-moz-range-thumb{box-shadow:0 0 0 3px rgba(201,168,76,0.3)}
+
   .platform-input,
   .platform-select,
   .platform-textarea{
     width:100%;
-    border-radius:14px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.03);
     color:var(--text);
@@ -4723,7 +5382,7 @@ const platformCss = `
     width:56px;
     height:48px;
     border:none;
-    border-radius:12px;
+    border-radius:6px;
     background:none;
     padding:0;
     cursor:pointer;
@@ -4737,7 +5396,7 @@ const platformCss = `
 
   .platform-segmented-btn{
     min-height:44px;
-    border-radius:12px;
+    border-radius:6px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
     color:var(--text);
@@ -4754,7 +5413,7 @@ const platformCss = `
     display:grid;
     gap:0.55rem;
     padding:0.8rem 0.9rem;
-    border-radius:16px;
+    border-radius:6px;
     border:1px dashed rgba(201,168,76,0.18);
     color:var(--muted);
     line-height:1.6;
@@ -4800,7 +5459,7 @@ const platformCss = `
 
   .platform-code-card{
     padding:1rem;
-    border-radius:20px;
+    border-radius:8px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
     overflow:auto;
@@ -4856,6 +5515,175 @@ const platformCss = `
 
   .platform-page--brief .platform-chat-messages{
     max-height:160px;
+  }
+
+  .platform-status-chip{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:40px;
+    padding:0.45rem 0.75rem;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:rgba(201,168,76,0.04);
+    color:var(--cream);
+    font-size:0.78rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+
+  .platform-status-chip--offline,
+  .platform-status-chip--local-only,
+  .platform-status-chip--error{
+    background:rgba(201,168,76,0.12);
+  }
+
+  .platform-dashboard-hero{
+    display:grid;
+    grid-template-columns:minmax(0, 1.6fr) minmax(280px, 0.8fr);
+    gap:1rem;
+  }
+
+  .platform-dashboard-stats{
+    display:grid;
+    gap:0.8rem;
+  }
+
+  .platform-stat-card,
+  .platform-project-card--studio{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--panel);
+    padding:1rem;
+  }
+
+  .platform-stat-card span{
+    color:var(--muted);
+    font-size:0.8rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+  }
+
+  .platform-stat-card strong{
+    display:block;
+    margin-top:0.35rem;
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:2rem;
+  }
+
+  .platform-project-grid--cards{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .platform-project-thumb,
+  .platform-image-thumb{
+    overflow:hidden;
+    border:1px solid rgba(201,168,76,0.12);
+    border-radius:8px;
+    background:#050505;
+  }
+
+  .platform-project-copy{
+    display:grid;
+    gap:0.45rem;
+    margin-top:0.85rem;
+  }
+
+  .platform-project-meta{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.75rem;
+  }
+
+  .platform-editor-layout{
+    grid-template-columns:220px minmax(0,1fr) 320px;
+    height:calc(100dvh - 9rem);
+    overflow:hidden;
+  }
+
+  .platform-page--editor{
+    height:calc(100dvh - 7rem);
+    overflow:hidden;
+  }
+
+  .platform-editor-sidebar,
+  .platform-editor-inspector{
+    overflow-y:auto;
+  }
+
+  .platform-editor-preview{
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+  }
+
+  .platform-editor-preview-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.8rem;
+    padding:0.75rem 0.9rem;
+    border-bottom:1px solid var(--line);
+  }
+
+  .platform-editor-section-name{
+    color:var(--cream);
+  }
+
+  .platform-preview-frame--editor{
+    min-height:100%;
+  }
+
+  .platform-export-list{
+    display:grid;
+    gap:0.8rem;
+  }
+
+  .platform-export-item{
+    display:grid;
+    gap:0.3rem;
+    padding:0.9rem 1rem;
+    border:1px solid rgba(201,168,76,0.12);
+    border-radius:8px;
+    background:var(--panel-2);
+  }
+
+  .platform-image-thumb{
+    min-height:160px;
+  }
+
+  .platform-image-thumb img{
+    display:block;
+    width:100%;
+    height:160px;
+    object-fit:cover;
+  }
+
+  .platform-fullscreen-overlay{
+    position:fixed;
+    inset:0;
+    z-index:120;
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+    background:rgba(8,8,8,0.94);
+    padding:1rem;
+  }
+
+  .platform-fullscreen-bar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:0.75rem 0 1rem;
+  }
+
+  .platform-fullscreen-frame{
+    width:100%;
+    height:100%;
+    border:none;
+    border-radius:10px;
+    background:#050505;
   }
 
   @media (max-width: 1200px){
@@ -4928,6 +5756,30 @@ const platformCss = `
 
     .platform-control-grid,
     .platform-segmented{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media (max-width: 768px){
+    .platform-page--generate{
+      display:flex;
+      flex-direction:column;
+    }
+
+    .platform-generate-main{
+      order:1;
+    }
+
+    .platform-agent-panel{
+      order:2;
+    }
+
+    .platform-decisions-rail{
+      order:3;
+    }
+
+    .platform-dashboard-hero,
+    .platform-project-grid--cards{
       grid-template-columns:1fr;
     }
   }
@@ -5082,7 +5934,7 @@ const platformCss = `
       flex-direction:column;
     }
     .platform-editor-layout::before{
-      content:"Best edited on desktop. Text and color tweaks still work here.";
+      content:"Mobile review mode is active. For the full editing stack, switch to desktop.";
       order:0;
       display:block;
       padding:0.75rem 1rem;
@@ -5123,6 +5975,412 @@ const platformCss = `
     .platform-code-card{
       overflow-x:auto;
       -webkit-overflow-scrolling:touch;
+    }
+  }
+
+  /* Irie overhaul overrides */
+  :root{
+    --panel:#101010;
+    --panel-2:#141414;
+    --gold-soft:rgba(201,168,76,0.06);
+    --gold-dim:rgba(201,168,76,0.12);
+    --radius:6px;
+  }
+
+  .platform-shell{
+    background:
+      radial-gradient(circle at top right, rgba(201,168,76,0.08), transparent 24%),
+      radial-gradient(circle at bottom left, rgba(201,168,76,0.05), transparent 20%),
+      var(--bg);
+  }
+
+  .platform-hero-card,
+  .platform-section-card,
+  .platform-toolbar,
+  .platform-preview-panel,
+  .platform-preview-single,
+  .platform-loading-stage,
+  .platform-empty,
+  .platform-project-card--studio,
+  .platform-stat-card,
+  .platform-accordion,
+  .platform-editor-sidebar,
+  .platform-editor-inspector,
+  .platform-editor-preview,
+  .platform-editor-panel,
+  .platform-color-card,
+  .platform-clone-dropzone,
+  .platform-clone-result,
+  .platform-history-item,
+  .platform-rail-card,
+  .platform-mobile-card,
+  .platform-export-item,
+  .platform-status-strip{
+    border-radius:6px;
+    box-shadow:none;
+    backdrop-filter:none;
+  }
+
+  .platform-toolbar,
+  .platform-loading-stage,
+  .platform-empty,
+  .platform-color-card,
+  .platform-clone-dropzone,
+  .platform-editor-panel,
+  .platform-mobile-card,
+  .platform-export-item,
+  .platform-stat-card,
+  .platform-project-card--studio{
+    background:var(--panel);
+  }
+
+  .platform-pill,
+  .platform-chip,
+  .platform-segmented-btn,
+  .platform-editor-item,
+  .platform-status-chip{
+    border-radius:6px;
+  }
+
+  .platform-toolbar{
+    border-color:var(--line);
+  }
+
+  .platform-status-chip{
+    min-height:44px;
+    background:rgba(201,168,76,0.04);
+  }
+
+  .platform-status-chip--offline,
+  .platform-status-chip--local-only,
+  .platform-status-chip--error{
+    background:rgba(201,168,76,0.16);
+    color:var(--gold);
+  }
+
+  .platform-flow-tablist{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:0.55rem;
+    flex-wrap:wrap;
+  }
+
+  .platform-page--generate{
+    position:relative;
+    display:block;
+    padding:1rem 0 2rem;
+  }
+
+  .platform-generate-main{
+    grid-template-rows:auto auto auto auto;
+  }
+
+  .platform-preview-stage{
+    display:grid;
+    min-height:min(72dvh, 920px);
+  }
+
+  .platform-empty--preview,
+  .platform-loading-stage--preview{
+    min-height:min(72dvh, 920px);
+    align-content:center;
+    justify-items:center;
+    text-align:center;
+  }
+
+  .platform-preview-stage-copy{
+    display:grid;
+    gap:0.65rem;
+    max-width:42rem;
+  }
+
+  .platform-preview-stage-copy h2{
+    margin:0;
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:clamp(1.8rem, 4vw, 3rem);
+    line-height:0.98;
+  }
+
+  .platform-toolbar--generate{
+    padding:0.9rem 1rem;
+  }
+
+  .platform-status-strip{
+    display:grid;
+    gap:0.85rem;
+    padding:0.9rem 1rem;
+    border:1px solid var(--line);
+  }
+
+  .platform-status-strip-copy{
+    display:grid;
+    gap:0.35rem;
+  }
+
+  .platform-status-strip-copy strong{
+    font-family:'Playfair Display', Georgia, serif;
+    font-size:1.25rem;
+    color:var(--cream);
+  }
+
+  .platform-status-strip-copy span:last-child{
+    color:var(--muted);
+    line-height:1.65;
+    font-size:0.92rem;
+  }
+
+  .platform-status-strip-list{
+    list-style:none;
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:0.6rem;
+    margin:0;
+    padding:0;
+  }
+
+  .platform-status-pill{
+    display:grid;
+    gap:0.2rem;
+    padding:0.75rem 0.85rem;
+    border:1px solid rgba(201,168,76,0.16);
+    border-radius:6px;
+    background:var(--panel-2);
+  }
+
+  .platform-status-pill span{
+    color:var(--muted);
+    font-size:0.7rem;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+  }
+
+  .platform-status-pill strong{
+    color:var(--cream);
+    font-size:0.86rem;
+    text-transform:capitalize;
+  }
+
+  .platform-status-pill--working{
+    border-color:rgba(201,168,76,0.34);
+    background:rgba(201,168,76,0.08);
+  }
+
+  .platform-status-pill--done strong{
+    color:var(--gold);
+  }
+
+  .platform-drawer-backdrop{
+    position:fixed;
+    inset:0;
+    z-index:94;
+    border:none;
+    background:rgba(0,0,0,0.4);
+  }
+
+  .platform-decisions-rail{
+    position:fixed;
+    top:5.5rem;
+    right:1rem;
+    bottom:1rem;
+    width:min(320px, calc(100vw - 2rem));
+    z-index:95;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:rgba(8,8,8,0.98);
+    transform:translateX(calc(100% + 1rem));
+    transition:transform 180ms ease;
+    box-shadow:none;
+  }
+
+  .platform-decisions-rail--open{
+    transform:translateX(0);
+  }
+
+  .platform-decisions-rail--collapsed{
+    pointer-events:none;
+  }
+
+  .platform-rail-toggle{
+    width:44px;
+    min-height:44px;
+  }
+
+  .platform-editor-header-actions{
+    display:flex;
+    align-items:center;
+    gap:0.75rem;
+  }
+
+  .platform-sheet-close{
+    display:none;
+    min-height:44px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:transparent;
+    color:var(--gold);
+    padding:0.7rem 0.9rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+    font-size:0.7rem;
+    cursor:pointer;
+  }
+
+  .platform-editor-preview-head{
+    display:grid;
+    gap:0.3rem;
+  }
+
+  .platform-mobile-review-note{
+    display:none;
+    color:var(--muted);
+    font-size:0.78rem;
+    line-height:1.45;
+  }
+
+  .platform-mobile-editor-dock{
+    display:none;
+  }
+
+  .platform-editor-sidebar,
+  .platform-editor-inspector,
+  .platform-editor-preview{
+    border-radius:6px;
+    background:var(--panel);
+  }
+
+  .platform-editor-item{
+    min-height:44px;
+  }
+
+  .platform-editor-selected{
+    border-radius:6px;
+    background:var(--panel-2);
+  }
+
+  @media (max-width: 900px){
+    .platform-preview-stage{
+      min-height:min(62dvh, 760px);
+    }
+  }
+
+  @media (max-width: 768px){
+    .platform-toolbar--generate{
+      order:2;
+    }
+
+    .platform-status-strip{
+      order:3;
+    }
+
+    .platform-section-card--workbench{
+      order:4;
+    }
+  }
+
+  @media (max-width: 640px){
+    .platform-flow-tablist{
+      justify-content:flex-start;
+    }
+
+    .platform-preview-stage{
+      min-height:min(60dvh, 680px);
+    }
+
+    .platform-page--generate .platform-preview-frame{
+      margin-left:0;
+      margin-right:0;
+      width:100%;
+      border-radius:0;
+    }
+
+    .platform-decisions-rail{
+      top:auto;
+      left:0.75rem;
+      right:0.75rem;
+      bottom:0.75rem;
+      width:auto;
+      max-height:min(78dvh, 680px);
+    }
+
+    .platform-page--editor{
+      height:auto;
+      overflow:visible;
+      padding-bottom:5.5rem;
+    }
+
+    .platform-editor-layout{
+      display:block;
+      height:auto;
+      min-height:0;
+      overflow:visible;
+    }
+
+    .platform-editor-layout::before{
+      content:none;
+    }
+
+    .platform-editor-preview{
+      min-height:calc(100dvh - 15rem);
+    }
+
+    .platform-editor-preview-toolbar{
+      align-items:flex-start;
+    }
+
+    .platform-mobile-review-note{
+      display:block;
+    }
+
+    .platform-editor-sidebar,
+    .platform-editor-inspector{
+      position:fixed;
+      left:0.75rem;
+      right:0.75rem;
+      bottom:0;
+      top:auto;
+      max-height:min(78dvh, 680px);
+      z-index:130;
+      transform:translateY(calc(100% + 1rem));
+      transition:transform 180ms ease;
+      overflow:auto;
+      border-radius:8px 18px 0 0;
+      padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .platform-editor-sidebar.is-mobile-open,
+    .platform-editor-inspector.is-mobile-open{
+      transform:translateY(0);
+    }
+
+    .platform-sheet-close{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .platform-mobile-editor-dock{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      z-index:125;
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:0.6rem;
+      padding:0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      border-top:1px solid var(--line);
+      background:rgba(8,8,8,0.98);
+    }
+
+    .platform-mobile-editor-dock .platform-primary-btn,
+    .platform-mobile-editor-dock .platform-secondary-btn{
+      width:100%;
+      padding-inline:0.6rem;
+    }
+
+    .platform-drawer-backdrop--mobile{
+      z-index:120;
     }
   }
 `
