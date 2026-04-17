@@ -2758,6 +2758,15 @@ export function EditorPage() {
   const [loaded, setLoaded] = useState(false)
   const [mobileSheet, setMobileSheet] = useState<'sections' | 'inspector' | 'theme' | null>(null)
   const [isFullscreenPreviewOpen, setIsFullscreenPreviewOpen] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set())
+  function toggleSectionExpanded(id: string) {
+    setExpandedSections(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const editorContextRef = useRef<EditorContext | null>(null)
@@ -3148,6 +3157,22 @@ export function EditorPage() {
   const sectionGroups = editorModel ? groupTextItemsBySection(editorModel.textItems) : []
   const imageSectionGroups = editorModel ? groupImageItemsBySection(editorModel.imageItems) : []
   const editorObjectCount = (editorModel?.textItems.length || 0) + (editorModel?.imageItems.length || 0)
+
+  const activeSectionId =
+    selectedSectionItem?.id ||
+    selectedTextItem?.sectionId ||
+    selectedImageItem?.sectionId ||
+    null
+
+  useEffect(() => {
+    if (!activeSectionId) return
+    setExpandedSections(prev => {
+      if (prev.has(activeSectionId)) return prev
+      const next = new Set(prev)
+      next.add(activeSectionId)
+      return next
+    })
+  }, [activeSectionId])
   const availableInspectorTabs = getAvailableInspectorTabs({ selectedTextItem, selectedImageItem, selectedSectionItem })
 
   useEffect(() => {
@@ -3201,27 +3226,47 @@ export function EditorPage() {
                 <div id="editor-panel-content" role="tabpanel" aria-labelledby="editor-tab-content" className="platform-editor-panel">
                   <span className="platform-kicker">Structure</span>
                   <div className="platform-editor-sections">
-                    {sectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-group">
-                        <button type="button" className={`platform-editor-section-head ${selectedSectionId === section.id ? 'is-active' : ''}`} onClick={() => focusSectionItem(section.id)}>
-                          <strong>{section.label}</strong>
-                          <span>{section.items.length} text objects</span>
-                        </button>
-                        <div className="platform-editor-list">
-                          {section.items.map(item => (
-                            <button
-                              key={item.id}
+                    {sectionGroups.map(section => {
+                      const isOpen = expandedSections.has(section.id)
+                      return (
+                      <div key={section.id} className={`platform-editor-section-group ${isOpen ? 'is-open' : ''}`}>
+                        <div className={`platform-editor-section-head ${selectedSectionId === section.id ? 'is-active' : ''}`}>
+                          <button
                             type="button"
-                            className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
-                            onClick={() => focusTextItem(item.id)}
+                            className="platform-editor-section-toggle"
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.label}`}
+                            onClick={() => toggleSectionExpanded(section.id)}
                           >
-                              <strong>{item.label}</strong>
-                              <span>{item.kind} · {(textValues[item.id] || item.text).slice(0, 42)}</span>
-                            </button>
-                          ))}
+                            <span className={`platform-editor-section-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true">›</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="platform-editor-section-name"
+                            onClick={() => { focusSectionItem(section.id); if (!isOpen) toggleSectionExpanded(section.id) }}
+                          >
+                            <strong>{section.label}</strong>
+                            <span>{section.items.length} text objects</span>
+                          </button>
                         </div>
+                        {isOpen ? (
+                          <div className="platform-editor-list">
+                            {section.items.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
+                                onClick={() => focusTextItem(item.id)}
+                              >
+                                <strong>{item.label}</strong>
+                                <span>{item.kind} · {(textValues[item.id] || item.text).slice(0, 42)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
                 ) : null}
@@ -3230,27 +3275,43 @@ export function EditorPage() {
                 <div id="editor-panel-media" role="tabpanel" aria-labelledby="editor-tab-media" className="platform-editor-panel">
                   <span className="platform-kicker">Images</span>
                   <div className="platform-editor-sections">
-                    {editorModel.imageItems.length ? imageSectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-group">
+                    {editorModel.imageItems.length ? imageSectionGroups.map(section => {
+                      const isOpen = expandedSections.has(section.id)
+                      return (
+                      <div key={section.id} className={`platform-editor-section-group ${isOpen ? 'is-open' : ''}`}>
                         <div className="platform-editor-section-head">
-                          <strong>{section.label}</strong>
-                          <span>{section.items.length} media objects</span>
-                        </div>
-                        <div className="platform-editor-list">
-                          {section.items.map(item => (
-                            <button
-                              key={item.id}
+                          <button
                             type="button"
-                            className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
-                            onClick={() => focusImageItem(item.id)}
+                            className="platform-editor-section-toggle"
+                            aria-expanded={isOpen}
+                            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${section.label}`}
+                            onClick={() => toggleSectionExpanded(section.id)}
                           >
-                              <strong>{item.label}</strong>
-                              <span>image slot · replace asset</span>
-                            </button>
-                          ))}
+                            <span className={`platform-editor-section-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true">›</span>
+                          </button>
+                          <div className="platform-editor-section-name">
+                            <strong>{section.label}</strong>
+                            <span>{section.items.length} media objects</span>
+                          </div>
                         </div>
+                        {isOpen ? (
+                          <div className="platform-editor-list">
+                            {section.items.map(item => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
+                                onClick={() => focusImageItem(item.id)}
+                              >
+                                <strong>{item.label}</strong>
+                                <span>image slot · replace asset</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
-                    )) : <span className="platform-helper">No image slots detected.</span>}
+                      )
+                    }) : <span className="platform-helper">No image slots detected.</span>}
                   </div>
                 </div>
                 ) : null}
@@ -5080,19 +5141,65 @@ const platformCss = `
   .platform-editor-section-head{
     display:flex;
     align-items:center;
-    justify-content:space-between;
-    gap:0.75rem;
+    gap:0.3rem;
+    padding:0.25rem 0.1rem;
+    border-radius:4px;
+  }
+  .platform-editor-section-head.is-active{
+    background:rgba(201,168,76,0.08);
   }
 
-  .platform-editor-section-head strong{
+  .platform-editor-section-toggle{
+    flex:none;
+    width:22px;
+    height:22px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    border:none;
+    background:transparent;
+    color:var(--muted);
+    cursor:pointer;
+    border-radius:4px;
+  }
+  .platform-editor-section-toggle:hover{color:var(--gold)}
+  .platform-editor-section-chevron{
+    display:inline-block;
+    font-size:1rem;
+    line-height:1;
+    transition:transform 0.15s ease;
+  }
+  .platform-editor-section-chevron.is-open{transform:rotate(90deg)}
+
+  .platform-editor-section-name{
+    flex:1 1 auto;
+    display:grid;
+    gap:0.1rem;
+    padding:0.15rem 0.1rem;
+    border:none;
+    background:transparent;
+    color:inherit;
+    text-align:left;
+    cursor:pointer;
+    min-width:0;
+  }
+  .platform-editor-section-name:hover strong{color:var(--gold)}
+
+  .platform-editor-section-head strong,
+  .platform-editor-section-name strong{
     font-size:0.74rem;
     letter-spacing:0.1em;
     text-transform:uppercase;
   }
 
-  .platform-editor-section-head span{
+  .platform-editor-section-head span,
+  .platform-editor-section-name span{
     color:var(--muted);
     font-size:0.7rem;
+  }
+
+  .platform-editor-section-group .platform-editor-list{
+    margin:0.3rem 0 0.2rem 1.6rem;
   }
 
   .platform-editor-list{
@@ -5520,18 +5627,8 @@ const platformCss = `
     border-bottom:1px solid var(--line);
   }
 
-  .platform-editor-section-head{
-    width:100%;
-    padding:0.4rem 0;
-    border:none;
-    background:none;
+  .platform-editor-section-name{
     color:var(--cream);
-    cursor:pointer;
-    text-align:left;
-  }
-
-  .platform-editor-section-head.is-active{
-    color:var(--gold);
   }
 
   .platform-preview-frame--editor{
