@@ -2788,12 +2788,12 @@ export function EditorPage() {
           {generation?.html && editorModel ? (
             <section className="platform-editor-layout">
               <aside className="platform-editor-sidebar">
-                <div className="platform-editor-panel">
-                  <span className="platform-kicker">Workspace</span>
+                <div className="platform-editor-header">
                   <div className="platform-editor-workspace">
                     <strong>{generation.blueprint?.brandCore?.brandName || 'Current Site'}</strong>
                     <span>{sectionGroups.length} sections · {editorObjectCount} editable objects</span>
                   </div>
+                  <span className="platform-kicker">Editor</span>
                 </div>
 
                 <div className="platform-pill-row platform-pill-row--compact">
@@ -2807,7 +2807,7 @@ export function EditorPage() {
                   <span className="platform-kicker">Structure</span>
                   <div className="platform-editor-sections">
                     {sectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-card">
+                      <div key={section.id} className="platform-editor-section-group">
                         <div className="platform-editor-section-head">
                           <strong>{section.label}</strong>
                           <span>{section.items.length} text objects</span>
@@ -2816,12 +2816,12 @@ export function EditorPage() {
                           {section.items.map(item => (
                             <button
                               key={item.id}
-                              type="button"
-                              className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
-                              onClick={() => focusTextItem(item.id)}
-                            >
-                              <strong>{item.kind} · {item.label}</strong>
-                              <span>{(textValues[item.id] || item.text).slice(0, 50)}</span>
+                            type="button"
+                            className={`platform-editor-item ${selectedTextId === item.id ? 'is-active' : ''}`}
+                            onClick={() => focusTextItem(item.id)}
+                          >
+                              <strong>{item.label}</strong>
+                              <span>{item.kind} · {(textValues[item.id] || item.text).slice(0, 42)}</span>
                             </button>
                           ))}
                         </div>
@@ -2836,7 +2836,7 @@ export function EditorPage() {
                   <span className="platform-kicker">Images</span>
                   <div className="platform-editor-sections">
                     {editorModel.imageItems.length ? imageSectionGroups.map(section => (
-                      <div key={section.id} className="platform-editor-section-card">
+                      <div key={section.id} className="platform-editor-section-group">
                         <div className="platform-editor-section-head">
                           <strong>{section.label}</strong>
                           <span>{section.items.length} media objects</span>
@@ -2845,12 +2845,12 @@ export function EditorPage() {
                           {section.items.map(item => (
                             <button
                               key={item.id}
-                              type="button"
-                              className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
-                              onClick={() => focusImageItem(item.id)}
-                            >
-                              <strong>image slot · {item.label}</strong>
-                              <span>Replace this image slot</span>
+                            type="button"
+                            className={`platform-editor-item ${selectedImageId === item.id ? 'is-active' : ''}`}
+                            onClick={() => focusImageItem(item.id)}
+                          >
+                              <strong>{item.label}</strong>
+                              <span>image slot · replace asset</span>
                             </button>
                           ))}
                         </div>
@@ -4484,7 +4484,7 @@ const platformCss = `
 
   .platform-editor-layout{
     display:grid;
-    grid-template-columns:300px minmax(0, 1fr) 320px;
+    grid-template-columns:260px minmax(0, 1fr) 300px;
     gap:1rem;
     min-height:calc(100dvh - 8.5rem);
   }
@@ -4502,11 +4502,19 @@ const platformCss = `
 
   .platform-editor-sidebar{
     display:grid;
-    gap:1rem;
-    padding:1rem;
+    gap:0.75rem;
+    padding:0.85rem;
     align-content:start;
     min-height:0;
     overflow:auto;
+  }
+
+  .platform-editor-header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:0.8rem;
+    padding:0.15rem 0.1rem 0.25rem;
   }
 
   .platform-editor-inspector{
@@ -4542,26 +4550,22 @@ const platformCss = `
 
   .platform-editor-workspace strong{
     font-family:'Playfair Display', Georgia, serif;
-    font-size:1.18rem;
+    font-size:1rem;
   }
 
   .platform-editor-workspace span{
     color:var(--muted);
-    font-size:0.86rem;
+    font-size:0.78rem;
   }
 
   .platform-editor-sections{
     display:grid;
-    gap:0.85rem;
+    gap:0.65rem;
   }
 
-  .platform-editor-section-card{
+  .platform-editor-section-group{
     display:grid;
-    gap:0.7rem;
-    padding:0.85rem;
-    border-radius:18px;
-    background:rgba(255,255,255,0.025);
-    border:1px solid rgba(201,168,76,0.1);
+    gap:0.4rem;
   }
 
   .platform-editor-section-head{
@@ -4572,29 +4576,29 @@ const platformCss = `
   }
 
   .platform-editor-section-head strong{
-    font-size:0.84rem;
+    font-size:0.74rem;
     letter-spacing:0.1em;
     text-transform:uppercase;
   }
 
   .platform-editor-section-head span{
     color:var(--muted);
-    font-size:0.76rem;
+    font-size:0.7rem;
   }
 
   .platform-editor-list{
     display:grid;
-    gap:0.7rem;
+    gap:0.45rem;
   }
 
   .platform-editor-item{
     width:100%;
     display:grid;
-    gap:0.35rem;
-    padding:0.9rem 1rem;
+    gap:0.18rem;
+    padding:0.62rem 0.72rem;
     text-align:left;
     color:var(--text);
-    border-radius:18px;
+    border-radius:12px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
     cursor:pointer;
@@ -4606,15 +4610,15 @@ const platformCss = `
   }
 
   .platform-editor-item strong{
-    font-size:0.82rem;
-    letter-spacing:0.08em;
-    text-transform:uppercase;
+    font-size:0.76rem;
+    letter-spacing:0.04em;
+    text-transform:none;
   }
 
   .platform-editor-item span{
     color:var(--muted);
-    line-height:1.55;
-    font-size:0.92rem;
+    line-height:1.35;
+    font-size:0.72rem;
   }
 
   .platform-color-card--editor{
