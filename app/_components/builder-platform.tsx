@@ -2695,6 +2695,51 @@ export function GeneratePage() {
   )
 }
 
+function SliderField({
+  label,
+  value,
+  unit,
+  min,
+  max,
+  step,
+  fallback,
+  onChange,
+}: {
+  label: string
+  value: string
+  unit: string
+  min: number
+  max: number
+  step: number
+  fallback: number
+  onChange: (next: string) => void
+}) {
+  const parsed = Number.parseFloat(value)
+  const current = Number.isFinite(parsed) ? parsed : fallback
+  const clamped = Math.min(Math.max(current, min), max)
+  const readout = unit === '' ? clamped.toFixed(step < 0.1 ? 2 : step < 1 ? 1 : 0) : `${clamped}${unit}`
+  return (
+    <label className="platform-field platform-field--slider">
+      <span className="platform-field-head">
+        <span className="platform-field-label">{label}</span>
+        <span className="platform-field-readout">{readout}</span>
+      </span>
+      <input
+        className="platform-range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={clamped}
+        onChange={event => {
+          const next = Number.parseFloat(event.target.value)
+          onChange(unit === '' ? String(next) : `${next}${unit}`)
+        }}
+      />
+    </label>
+  )
+}
+
 export function EditorPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
   const [editorModel, setEditorModel] = useState<EditableDocumentModel | null>(null)
@@ -3315,14 +3360,26 @@ export function EditorPage() {
                       {inspectorTab === 'style' ? (
                         <>
                           <div className="platform-control-grid">
-                            <label className="platform-field">
-                              <span className="platform-field-label">Padding Top</span>
-                              <input className="platform-input" type="text" value={selectedSectionStyle.paddingTop} placeholder="e.g. 72px" onChange={event => updateSelectedSectionStyle('paddingTop', event.target.value)} />
-                            </label>
-                            <label className="platform-field">
-                              <span className="platform-field-label">Padding Bottom</span>
-                              <input className="platform-input" type="text" value={selectedSectionStyle.paddingBottom} placeholder="e.g. 72px" onChange={event => updateSelectedSectionStyle('paddingBottom', event.target.value)} />
-                            </label>
+                            <SliderField
+                              label="Padding Top"
+                              value={selectedSectionStyle.paddingTop}
+                              unit="px"
+                              min={0}
+                              max={240}
+                              step={4}
+                              fallback={72}
+                              onChange={next => updateSelectedSectionStyle('paddingTop', next)}
+                            />
+                            <SliderField
+                              label="Padding Bottom"
+                              value={selectedSectionStyle.paddingBottom}
+                              unit="px"
+                              min={0}
+                              max={240}
+                              step={4}
+                              fallback={72}
+                              onChange={next => updateSelectedSectionStyle('paddingBottom', next)}
+                            />
                           </div>
                           <label className="platform-field">
                             <span className="platform-field-label">Background</span>
@@ -3401,38 +3458,38 @@ export function EditorPage() {
                               </select>
                             </label>
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Size</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.fontSize}
-                                placeholder="e.g. 24px"
-                                onChange={event => updateSelectedTextStyle('fontSize', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Size"
+                              value={selectedTextStyle.fontSize}
+                              unit="px"
+                              min={8}
+                              max={120}
+                              step={1}
+                              fallback={16}
+                              onChange={next => updateSelectedTextStyle('fontSize', next)}
+                            />
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Line Height</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.lineHeight}
-                                placeholder="e.g. 1.4"
-                                onChange={event => updateSelectedTextStyle('lineHeight', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Line Height"
+                              value={selectedTextStyle.lineHeight}
+                              unit=""
+                              min={0.8}
+                              max={2.5}
+                              step={0.05}
+                              fallback={1.4}
+                              onChange={next => updateSelectedTextStyle('lineHeight', next)}
+                            />
 
-                            <label className="platform-field">
-                              <span className="platform-field-label">Letter Spacing</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.letterSpacing}
-                                placeholder="e.g. 0.04em"
-                                onChange={event => updateSelectedTextStyle('letterSpacing', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Letter Spacing"
+                              value={selectedTextStyle.letterSpacing}
+                              unit="em"
+                              min={-0.05}
+                              max={0.3}
+                              step={0.01}
+                              fallback={0}
+                              onChange={next => updateSelectedTextStyle('letterSpacing', next)}
+                            />
 
                             <label className="platform-field">
                               <span className="platform-field-label">Text Transform</span>
@@ -3543,38 +3600,36 @@ export function EditorPage() {
 
                       {inspectorTab === 'layout' && selectedTextItem.isAction ? (
                           <div className="platform-control-grid">
-                            <label className="platform-field">
-                              <span className="platform-field-label">Radius</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.borderRadius}
-                                placeholder="e.g. 18px"
-                                onChange={event => updateSelectedTextStyle('borderRadius', event.target.value)}
-                              />
-                            </label>
-
-                            <label className="platform-field">
-                              <span className="platform-field-label">Horizontal Padding</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.paddingInline}
-                                placeholder="e.g. 24px"
-                                onChange={event => updateSelectedTextStyle('paddingInline', event.target.value)}
-                              />
-                            </label>
-
-                            <label className="platform-field">
-                              <span className="platform-field-label">Vertical Padding</span>
-                              <input
-                                className="platform-input"
-                                type="text"
-                                value={selectedTextStyle.paddingBlock}
-                                placeholder="e.g. 14px"
-                                onChange={event => updateSelectedTextStyle('paddingBlock', event.target.value)}
-                              />
-                            </label>
+                            <SliderField
+                              label="Radius"
+                              value={selectedTextStyle.borderRadius}
+                              unit="px"
+                              min={0}
+                              max={40}
+                              step={1}
+                              fallback={8}
+                              onChange={next => updateSelectedTextStyle('borderRadius', next)}
+                            />
+                            <SliderField
+                              label="Horizontal Padding"
+                              value={selectedTextStyle.paddingInline}
+                              unit="px"
+                              min={0}
+                              max={64}
+                              step={1}
+                              fallback={24}
+                              onChange={next => updateSelectedTextStyle('paddingInline', next)}
+                            />
+                            <SliderField
+                              label="Vertical Padding"
+                              value={selectedTextStyle.paddingBlock}
+                              unit="px"
+                              min={0}
+                              max={40}
+                              step={1}
+                              fallback={14}
+                              onChange={next => updateSelectedTextStyle('paddingBlock', next)}
+                            />
                           </div>
                       ) : null}
                     </div>
@@ -3622,10 +3677,16 @@ export function EditorPage() {
                               ))}
                             </div>
                           </label>
-                          <label className="platform-field">
-                            <span className="platform-field-label">Radius</span>
-                            <input className="platform-input" type="range" min="0" max="24" step="1" value={parseInt(selectedImageStyle.borderRadius || '0', 10) || 0} onChange={event => updateSelectedImageStyle('borderRadius', `${event.target.value}px`)} />
-                          </label>
+                          <SliderField
+                            label="Radius"
+                            value={selectedImageStyle.borderRadius}
+                            unit="px"
+                            min={0}
+                            max={40}
+                            step={1}
+                            fallback={0}
+                            onChange={next => updateSelectedImageStyle('borderRadius', next)}
+                          />
                         </>
                       ) : null}
                     </div>
@@ -5133,6 +5194,49 @@ const platformCss = `
     letter-spacing:0.14em;
     text-transform:uppercase;
   }
+
+  .platform-field--slider{gap:0.3rem}
+  .platform-field-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:0.5rem;
+  }
+  .platform-field-readout{
+    color:var(--text);
+    font-family:'Syne', system-ui, sans-serif;
+    font-size:0.8rem;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0;
+  }
+  .platform-range{
+    appearance:none;
+    width:100%;
+    height:4px;
+    background:rgba(201,168,76,0.18);
+    border-radius:999px;
+    outline:none;
+    margin:0.3rem 0 0;
+  }
+  .platform-range::-webkit-slider-thumb{
+    appearance:none;
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--gold);
+    border:2px solid var(--bg);
+    cursor:pointer;
+  }
+  .platform-range::-moz-range-thumb{
+    width:16px;
+    height:16px;
+    border-radius:50%;
+    background:var(--gold);
+    border:2px solid var(--bg);
+    cursor:pointer;
+  }
+  .platform-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(201,168,76,0.3)}
+  .platform-range:focus-visible::-moz-range-thumb{box-shadow:0 0 0 3px rgba(201,168,76,0.3)}
 
   .platform-input,
   .platform-select,
