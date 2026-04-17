@@ -704,6 +704,8 @@ const FONT_FAMILY_OPTIONS = [
 ] as const
 
 type InspectorTab = 'content' | 'style' | 'layout'
+type GenerateWorkbenchTab = 'revise' | 'history' | 'changes' | 'errors'
+type DecisionsRailTab = 'blueprint' | 'critique' | 'decisions'
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -1932,6 +1934,8 @@ export function GeneratePage() {
   const [viewportMode, setViewportMode] = useState<'mobile' | 'desktop'>('desktop')
   const [previewMode, setPreviewMode] = useState<'current' | 'before-after'>('current')
   const [railCollapsed, setRailCollapsed] = useState(false)
+  const [workbenchTab, setWorkbenchTab] = useState<GenerateWorkbenchTab>('revise')
+  const [decisionsTab, setDecisionsTab] = useState<DecisionsRailTab>('blueprint')
   const [revisionInput, setRevisionInput] = useState('')
   const [loaded, setLoaded] = useState(false)
   const [generationCount, setGenerationCount] = useState(0)
@@ -2305,32 +2309,39 @@ export function GeneratePage() {
               </>
             )}
 
-            <section className="platform-section-card">
-              <div className="platform-section-head">
-                <span className="platform-kicker">Revision</span>
-                <h2>Tell me what to change</h2>
-              </div>
-              <div className="platform-revision-row">
-                <textarea
-                  className="platform-textarea"
-                  rows={3}
-                  value={revisionInput}
-                  onChange={event => setRevisionInput(event.target.value)}
-                  placeholder="Push the hero harder. Make it more luxurious. Add more tension. Bring trust forward."
-                />
-                <button type="button" className="platform-primary-btn" onClick={handleRevisionSubmit} disabled={loading || !revisionInput.trim()}>
-                  Rebuild with note →
-                </button>
-              </div>
-            </section>
-
-            <section className="platform-history-grid">
-              <div className="platform-section-card">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">Pass History</span>
-                  <h2>Recent passes</h2>
+            <section className="platform-section-card platform-section-card--workbench">
+              <div className="platform-section-head platform-section-head--compact">
+                <div>
+                  <span className="platform-kicker">Workbench</span>
+                  <h2>Refine this pass</h2>
                 </div>
-                {passHistory.length > 0 ? (
+                <div className="platform-pill-row platform-pill-row--compact">
+                  <button type="button" className={`platform-pill ${workbenchTab === 'revise' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('revise')}>Revise</button>
+                  <button type="button" className={`platform-pill ${workbenchTab === 'history' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('history')}>History</button>
+                  <button type="button" className={`platform-pill ${workbenchTab === 'changes' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('changes')}>Changes</button>
+                  {(error || errorLog.length > 0) ? (
+                    <button type="button" className={`platform-pill ${workbenchTab === 'errors' ? 'platform-pill--active' : ''}`} onClick={() => setWorkbenchTab('errors')}>Errors</button>
+                  ) : null}
+                </div>
+              </div>
+
+              {workbenchTab === 'revise' ? (
+                <div className="platform-revision-row">
+                  <textarea
+                    className="platform-textarea"
+                    rows={3}
+                    value={revisionInput}
+                    onChange={event => setRevisionInput(event.target.value)}
+                    placeholder="Push the hero harder. Make it more luxurious. Add more tension. Bring trust forward."
+                  />
+                  <button type="button" className="platform-primary-btn" onClick={handleRevisionSubmit} disabled={loading || !revisionInput.trim()}>
+                    Rebuild with note →
+                  </button>
+                </div>
+              ) : null}
+
+              {workbenchTab === 'history' ? (
+                passHistory.length > 0 ? (
                   <div className="platform-history-list">
                     {passHistory.map(item => (
                       <article key={item.label} className="platform-history-item">
@@ -2344,15 +2355,11 @@ export function GeneratePage() {
                     <h3>No pass history yet.</h3>
                     <p>The last few verdicts will appear here after generation completes.</p>
                   </div>
-                )}
-              </div>
+                )
+              ) : null}
 
-              <div className="platform-section-card">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">What Changed</span>
-                  <h2>Compare direction</h2>
-                </div>
-                {changeSummary ? (
+              {workbenchTab === 'changes' ? (
+                changeSummary ? (
                   <div className="platform-summary-list">
                     <strong>{changeSummary.headline}</strong>
                     {changeSummary.improvements.map(item => <p key={item}>{item}</p>)}
@@ -2363,36 +2370,33 @@ export function GeneratePage() {
                     <h3>No compare story yet.</h3>
                     <p>Run another pass and this panel will tell you what actually shifted.</p>
                   </div>
-                )}
-              </div>
+                )
+              ) : null}
+
+              {workbenchTab === 'errors' ? (
+                error || errorLog.length > 0 ? (
+                  <div className="platform-history-list">
+                    {error ? (
+                      <article className="platform-history-item platform-history-item--error">
+                        <strong>Latest error</strong>
+                        <p>{error}</p>
+                      </article>
+                    ) : null}
+                    {errorLog.map(entry => (
+                      <article key={`${entry.time}-${entry.message}`} className="platform-history-item">
+                        <strong>{entry.time}</strong>
+                        <p>{entry.message}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="platform-empty">
+                    <h3>No errors logged.</h3>
+                    <p>Generation issues will show up here if the pipeline hits a snag.</p>
+                  </div>
+                )
+              ) : null}
             </section>
-
-            {error && (
-              <section className="platform-section-card platform-section-card--error">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">Generation Error</span>
-                  <h2>We hit a snag.</h2>
-                </div>
-                <p>{error}</p>
-              </section>
-            )}
-
-            {errorLog.length > 0 && (
-              <section className="platform-section-card">
-                <div className="platform-section-head">
-                  <span className="platform-kicker">Log</span>
-                  <h2>Recent errors</h2>
-                </div>
-                <div className="platform-history-list">
-                  {errorLog.map(entry => (
-                    <article key={`${entry.time}-${entry.message}`} className="platform-history-item">
-                      <strong>{entry.time}</strong>
-                      <p>{entry.message}</p>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            )}
           </section>
 
           <aside className={`platform-decisions-rail ${railCollapsed ? 'platform-decisions-rail--collapsed' : ''}`}>
@@ -2408,56 +2412,80 @@ export function GeneratePage() {
 
             {!railCollapsed && (
               <div className="platform-rail-body">
-                {blueprint && (
-                  <>
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Brand Core</span>
-                      <strong>{blueprint.brandCore.brandName}</strong>
-                      <p>{blueprint.brandCore.emotionalPromise}</p>
-                      <p>Voice: {blueprint.brandCore.brandVoice}</p>
-                    </article>
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Design</span>
-                      <strong>{blueprint.designSystem.primaryDirection}</strong>
-                      <p>{blueprint.designSystem.typographyStrategy}</p>
-                      <p>{blueprint.designSystem.paletteStrategy}</p>
-                    </article>
-                    <article className="platform-rail-card">
-                      <span className="platform-rail-label">Motion</span>
-                      <strong>{blueprint.motionSystem.intensity}</strong>
-                      <p>{blueprint.motionSystem.revealBehavior}</p>
-                    </article>
-                  </>
-                )}
+                <div className="platform-pill-row platform-pill-row--compact">
+                  <button type="button" className={`platform-pill ${decisionsTab === 'blueprint' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('blueprint')}>Blueprint</button>
+                  <button type="button" className={`platform-pill ${decisionsTab === 'critique' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('critique')}>Critique</button>
+                  <button type="button" className={`platform-pill ${decisionsTab === 'decisions' ? 'platform-pill--active' : ''}`} onClick={() => setDecisionsTab('decisions')}>Decisions</button>
+                </div>
 
-                {critique && (
-                  <article className="platform-rail-card">
-                    <span className="platform-rail-label">Critique</span>
-                    <strong>{critique.verdict}</strong>
-                    <p>{critique.summary}</p>
-                    {critique.scores.map(score => (
-                      <div key={score.label} className="platform-score-row">
-                        <span>{score.label}</span>
-                        <strong>{score.score}</strong>
-                      </div>
-                    ))}
-                  </article>
-                )}
+                {decisionsTab === 'blueprint' ? (
+                  blueprint ? (
+                    <>
+                      <article className="platform-rail-card">
+                        <span className="platform-rail-label">Brand Core</span>
+                        <strong>{blueprint.brandCore.brandName}</strong>
+                        <p>{blueprint.brandCore.emotionalPromise}</p>
+                        <p>Voice: {blueprint.brandCore.brandVoice}</p>
+                      </article>
+                      <article className="platform-rail-card">
+                        <span className="platform-rail-label">Design</span>
+                        <strong>{blueprint.designSystem.primaryDirection}</strong>
+                        <p>{blueprint.designSystem.typographyStrategy}</p>
+                        <p>{blueprint.designSystem.paletteStrategy}</p>
+                      </article>
+                      <article className="platform-rail-card">
+                        <span className="platform-rail-label">Motion</span>
+                        <strong>{blueprint.motionSystem.intensity}</strong>
+                        <p>{blueprint.motionSystem.revealBehavior}</p>
+                      </article>
+                    </>
+                  ) : (
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Waiting</span>
+                      <strong>Blueprint will land here.</strong>
+                      <p>Generate a pass and this tab will condense the brand, design, and motion system into one working view.</p>
+                    </article>
+                  )
+                ) : null}
 
-                {decisions.length > 0 ? decisions.map(decision => (
-                  <article key={`${decision.label}-${decision.value}`} className="platform-rail-card">
-                    <span className="platform-rail-label">{decision.label}</span>
-                    <strong>{decision.value}</strong>
-                    {decision.agent && <span className="platform-rail-agent">↳ {decision.agent}</span>}
-                    <p>{decision.reason}</p>
-                  </article>
-                )) : (
-                  <article className="platform-rail-card">
-                    <span className="platform-rail-label">Waiting</span>
-                    <strong>Creative decisions will land here.</strong>
-                    <p>Once generation finishes, the rail will show the blueprint, critique, and agent-attributed choices.</p>
-                  </article>
-                )}
+                {decisionsTab === 'critique' ? (
+                  critique ? (
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Critique</span>
+                      <strong>{critique.verdict}</strong>
+                      <p>{critique.summary}</p>
+                      {critique.scores.map(score => (
+                        <div key={score.label} className="platform-score-row">
+                          <span>{score.label}</span>
+                          <strong>{score.score}</strong>
+                        </div>
+                      ))}
+                    </article>
+                  ) : (
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Waiting</span>
+                      <strong>Critique will land here.</strong>
+                      <p>After generation, the critic scores and summary will be available in this dedicated tab.</p>
+                    </article>
+                  )
+                ) : null}
+
+                {decisionsTab === 'decisions' ? (
+                  decisions.length > 0 ? decisions.map(decision => (
+                    <article key={`${decision.label}-${decision.value}`} className="platform-rail-card">
+                      <span className="platform-rail-label">{decision.label}</span>
+                      <strong>{decision.value}</strong>
+                      {decision.agent && <span className="platform-rail-agent">↳ {decision.agent}</span>}
+                      <p>{decision.reason}</p>
+                    </article>
+                  )) : (
+                    <article className="platform-rail-card">
+                      <span className="platform-rail-label">Waiting</span>
+                      <strong>Creative decisions will land here.</strong>
+                      <p>Once generation finishes, the rail will show the agent-attributed choices in one compact feed.</p>
+                    </article>
+                  )
+                ) : null}
               </div>
             )}
           </aside>
@@ -2470,6 +2498,7 @@ export function GeneratePage() {
 export function EditorPage() {
   const [generation, setGeneration] = useState<GenerationSnapshot | null>(null)
   const [editorModel, setEditorModel] = useState<EditableDocumentModel | null>(null)
+  const [sidebarTab, setSidebarTab] = useState<'content' | 'media' | 'theme'>('content')
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('content')
   const [textValues, setTextValues] = useState<Record<string, string>>({})
   const [textStyles, setTextStyles] = useState<Record<string, EditableTextStyle>>({})
@@ -2767,6 +2796,13 @@ export function EditorPage() {
                   </div>
                 </div>
 
+                <div className="platform-pill-row platform-pill-row--compact">
+                  <button type="button" className={`platform-pill ${sidebarTab === 'content' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('content')}>Content</button>
+                  <button type="button" className={`platform-pill ${sidebarTab === 'media' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('media')}>Media</button>
+                  <button type="button" className={`platform-pill ${sidebarTab === 'theme' ? 'platform-pill--active' : ''}`} onClick={() => setSidebarTab('theme')}>Theme</button>
+                </div>
+
+                {sidebarTab === 'content' ? (
                 <div className="platform-editor-panel">
                   <span className="platform-kicker">Structure</span>
                   <div className="platform-editor-sections">
@@ -2793,7 +2829,9 @@ export function EditorPage() {
                     ))}
                   </div>
                 </div>
+                ) : null}
 
+                {sidebarTab === 'media' ? (
                 <div className="platform-editor-panel">
                   <span className="platform-kicker">Images</span>
                   <div className="platform-editor-sections">
@@ -2820,15 +2858,33 @@ export function EditorPage() {
                     )) : <span className="platform-helper">No image slots detected.</span>}
                   </div>
                 </div>
+                ) : null}
 
+                {sidebarTab === 'theme' ? (
                 <div className="platform-editor-panel">
-                  <span className="platform-kicker">Colors</span>
+                  <span className="platform-kicker">Theme</span>
+                  <div className="platform-color-grid platform-color-grid--editor">
+                    <div className="platform-color-card platform-color-card--editor is-readonly">
+                      <span>Primary</span>
+                      <code>{generation.metadata?.palette?.primary || '—'}</code>
+                    </div>
+                    <div className="platform-color-card platform-color-card--editor is-readonly">
+                      <span>Background</span>
+                      <code>{generation.metadata?.palette?.background || '—'}</code>
+                    </div>
+                    <div className="platform-color-card platform-color-card--editor is-readonly">
+                      <span>Accent</span>
+                      <code>{generation.metadata?.palette?.accent || accentOverride}</code>
+                    </div>
+                  </div>
                   <label className="platform-color-card platform-color-card--editor">
                     <input type="color" value={accentOverride} onChange={event => setAccentOverride(event.target.value)} />
-                    <span>Accent Override</span>
+                    <span>Live Accent</span>
                     <code>{accentOverride}</code>
                   </label>
+                  <p className="platform-helper">Live accent updates branded highlights across the generated page. Object-level text and CTA colors live in the inspector.</p>
                 </div>
+                ) : null}
 
                 <input ref={uploadRef} type="file" accept="image/*" className="platform-hidden-input" onChange={handleImageUpload} />
               </aside>
@@ -3375,7 +3431,8 @@ const platformCss = `
     display:grid;
     grid-template-columns:280px minmax(0,1fr) 220px;
     gap:1rem;
-    align-items:start;
+    align-items:stretch;
+    min-height:calc(100dvh - 8.5rem);
   }
 
   .platform-page--generate.platform-page--rail-collapsed{
@@ -3765,17 +3822,34 @@ const platformCss = `
   }
 
   .platform-agent-panel{
-    position:sticky;
-    top:5.8rem;
-    padding:1.25rem;
+    display:grid;
+    grid-template-rows:auto auto auto minmax(0,1fr);
+    gap:0.9rem;
+    padding:1rem;
+    min-height:0;
+    overflow:hidden;
+  }
+
+  .platform-agent-panel h1{
+    font-size:clamp(1.35rem, 2vw, 2.1rem);
+    line-height:1;
+    margin:0.25rem 0 0.45rem;
+  }
+
+  .platform-agent-panel p{
+    font-size:0.9rem;
+    line-height:1.6;
   }
 
   .platform-agent-list{
     list-style:none;
     display:grid;
     gap:0.75rem;
-    margin:1.2rem 0 0;
+    margin:0;
     padding:0;
+    min-height:0;
+    overflow:auto;
+    padding-right:0.25rem;
   }
 
   .platform-agent-row{
@@ -3855,6 +3929,8 @@ const platformCss = `
   .platform-generate-main{
     display:grid;
     gap:1rem;
+    grid-template-rows:auto auto minmax(0, 1fr);
+    min-height:0;
   }
 
   .platform-toolbar{
@@ -3939,6 +4015,7 @@ const platformCss = `
   .platform-preview-grid{
     display:grid;
     gap:1rem;
+    min-height:0;
   }
 
   .platform-preview-grid{
@@ -3955,6 +4032,7 @@ const platformCss = `
     border-radius:24px;
     overflow:hidden;
     background:#050505;
+    min-height:0;
   }
 
   .platform-preview-label{
@@ -3969,7 +4047,7 @@ const platformCss = `
 
   .platform-preview-frame{
     width:100%;
-    min-height:720px;
+    min-height:min(62dvh, 720px);
     border:none;
     background:white;
   }
@@ -3989,7 +4067,7 @@ const platformCss = `
   .platform-mobile-card{
     display:grid;
     gap:0.65rem;
-    padding:1rem;
+    padding:0.85rem;
     border:1px solid var(--line);
     border-radius:22px;
     background:rgba(255,255,255,0.03);
@@ -3997,7 +4075,7 @@ const platformCss = `
   }
 
   .platform-preview-frame--phone{
-    min-height:560px;
+    min-height:min(48dvh, 420px);
     border-radius:22px;
     overflow:hidden;
   }
@@ -4041,10 +4119,11 @@ const platformCss = `
   }
 
   .platform-decisions-rail{
-    position:sticky;
-    top:5.8rem;
-    padding:1rem;
+    display:grid;
+    grid-template-rows:auto minmax(0,1fr);
+    padding:0.9rem;
     overflow:hidden;
+    min-height:0;
   }
 
   .platform-decisions-rail--collapsed{
@@ -4056,6 +4135,15 @@ const platformCss = `
     justify-content:space-between;
     gap:0.8rem;
     align-items:flex-start;
+  }
+
+  .platform-rail-body{
+    display:grid;
+    gap:0.75rem;
+    min-height:0;
+    overflow:auto;
+    align-content:start;
+    padding-right:0.2rem;
   }
 
   .platform-rail-toggle{
@@ -4398,7 +4486,7 @@ const platformCss = `
     display:grid;
     grid-template-columns:300px minmax(0, 1fr) 320px;
     gap:1rem;
-    min-height:75dvh;
+    min-height:calc(100dvh - 8.5rem);
   }
 
   .platform-editor-sidebar,
@@ -4417,6 +4505,8 @@ const platformCss = `
     gap:1rem;
     padding:1rem;
     align-content:start;
+    min-height:0;
+    overflow:auto;
   }
 
   .platform-editor-inspector{
@@ -4424,12 +4514,22 @@ const platformCss = `
     gap:1rem;
     padding:1rem;
     align-content:start;
+    min-height:0;
+    overflow:hidden;
+  }
+
+  .platform-editor-inspector .platform-pill-row{
+    position:sticky;
+    top:0;
+    z-index:2;
+    padding-bottom:0.2rem;
+    background:linear-gradient(180deg, rgba(10,10,10,0.96), rgba(10,10,10,0.82));
   }
 
   .platform-editor-panel{
     display:grid;
     gap:0.75rem;
-    padding:1rem;
+    padding:0.85rem 0.9rem;
     border-radius:20px;
     background:rgba(255,255,255,0.02);
     border:1px solid rgba(201,168,76,0.12);
@@ -4524,11 +4624,16 @@ const platformCss = `
   .platform-editor-preview{
     overflow:hidden;
     background:#050505;
+    min-height:0;
   }
 
   .platform-editor-controls{
     display:grid;
-    gap:1rem;
+    gap:0.85rem;
+    min-height:0;
+    overflow:auto;
+    align-content:start;
+    padding-right:0.2rem;
   }
 
   .platform-editor-selected{
@@ -4536,7 +4641,7 @@ const platformCss = `
     align-items:center;
     justify-content:space-between;
     gap:0.8rem;
-    padding:0.9rem 1rem;
+    padding:0.75rem 0.9rem;
     border-radius:16px;
     border:1px solid rgba(201,168,76,0.14);
     background:rgba(255,255,255,0.02);
@@ -4558,7 +4663,7 @@ const platformCss = `
   .platform-control-grid{
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:0.85rem;
+    gap:0.7rem;
   }
 
   .platform-control-grid--tight{
@@ -4567,7 +4672,7 @@ const platformCss = `
 
   .platform-field{
     display:grid;
-    gap:0.45rem;
+    gap:0.35rem;
   }
 
   .platform-field-label{
@@ -4586,12 +4691,12 @@ const platformCss = `
     background:rgba(255,255,255,0.03);
     color:var(--text);
     font:inherit;
-    padding:0.8rem 0.95rem;
+    padding:0.72rem 0.85rem;
   }
 
   .platform-textarea{
     resize:vertical;
-    min-height:120px;
+    min-height:96px;
     line-height:1.55;
   }
 
@@ -4644,7 +4749,7 @@ const platformCss = `
   .platform-editor-empty{
     display:grid;
     gap:0.55rem;
-    padding:1rem;
+    padding:0.8rem 0.9rem;
     border-radius:16px;
     border:1px dashed rgba(201,168,76,0.18);
     color:var(--muted);
@@ -4653,8 +4758,30 @@ const platformCss = `
 
   .platform-preview-frame--editor{
     width:100%;
-    min-height:75dvh;
+    min-height:calc(100dvh - 10rem);
     border:none;
+  }
+
+  .platform-color-grid--editor{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+  }
+
+  .platform-color-card--editor.is-readonly{
+    gap:0.35rem;
+    min-height:unset;
+  }
+
+  .platform-color-card--editor.is-readonly code{
+    font-size:0.82rem;
+  }
+
+  .platform-section-card--workbench{
+    min-height:0;
+    overflow:auto;
+  }
+
+  .platform-history-item--error{
+    border-color:rgba(227,114,114,0.22);
   }
 
   .platform-hidden-input{
@@ -4731,11 +4858,13 @@ const platformCss = `
     .platform-page--generate,
     .platform-page--generate.platform-page--rail-collapsed{
       grid-template-columns:1fr;
+      min-height:auto;
     }
 
     .platform-agent-panel,
     .platform-decisions-rail{
-      position:static;
+      min-height:auto;
+      overflow:visible;
     }
 
     .platform-decisions-rail--collapsed{
@@ -4750,10 +4879,20 @@ const platformCss = `
     .platform-editor-layout,
     .platform-recent-layout{
       grid-template-columns:1fr;
+      min-height:auto;
     }
 
     .platform-control-grid{
       grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+
+    .platform-editor-sidebar,
+    .platform-editor-inspector,
+    .platform-editor-controls,
+    .platform-rail-body,
+    .platform-agent-list,
+    .platform-section-card--workbench{
+      overflow:visible;
     }
   }
 
