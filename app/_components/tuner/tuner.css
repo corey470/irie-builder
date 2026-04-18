@@ -158,7 +158,7 @@
 .tuner-left {
   grid-area: left;
   border-right: 1px solid var(--tuner-border);
-  padding: 1.5rem 1rem;
+  padding: 1rem 0.9rem;
   overflow-y: auto;
   z-index: 3;
   background: rgba(8, 8, 8, 0.6);
@@ -172,9 +172,9 @@
   margin: 0;
 }
 .tuner-left-meta {
-  margin: 0.35rem 0 1.25rem;
+  margin: 0.2rem 0 0.75rem;
   font-family: var(--tuner-font-body);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -191,10 +191,10 @@
 .tuner-section-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.55rem;
   width: 100%;
-  min-height: 44px;
-  padding: 0.55rem 0.75rem;
+  min-height: 36px;
+  padding: 0.4rem 0.65rem;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
@@ -235,7 +235,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem var(--tuner-pad);
+  padding: 0.5rem var(--tuner-pad);
   border-bottom: 1px solid var(--tuner-border);
 }
 .tuner-viewport-toggle {
@@ -272,7 +272,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 1.25rem var(--tuner-pad);
+  padding: 0.75rem var(--tuner-pad);
   overflow: auto;
 }
 .tuner-frame-shell {
@@ -297,7 +297,7 @@
   position: relative;
   border-left: 1px solid var(--tuner-border);
   overflow-y: auto;
-  padding: 1.5rem 1.25rem 2rem;
+  padding: 1rem 1.125rem 1.25rem;
   background: rgba(8, 8, 8, 0.6);
   z-index: 3;
 }
@@ -309,7 +309,7 @@
   margin: 0;
 }
 .tuner-right-meta {
-  margin: 0.35rem 0 1.25rem;
+  margin: 0.2rem 0 0.75rem;
   font-family: var(--tuner-font-body);
   font-size: 12px;
   font-weight: 500;
@@ -322,8 +322,8 @@
 .tuner-presets {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
+  gap: 0.4rem;
+  margin-bottom: 0.875rem;
   opacity: 0;
   transform: translateY(12px);
   animation: tunerFadeUp 0.8s ease 0.3s forwards;
@@ -358,7 +358,7 @@
 }
 
 .tuner-group {
-  margin-bottom: 1.75rem;
+  margin-bottom: 1rem;
   opacity: 0;
   transform: translateY(12px);
   animation: tunerFadeUp 0.8s ease forwards;
@@ -367,12 +367,12 @@
 .tuner-group-context { animation-delay: 0.7s; }
 .tuner-group-label {
   font-family: var(--tuner-font-body);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--tuner-muted);
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.4rem;
 }
 @keyframes tunerFadeUp {
   to { opacity: 1; transform: translateY(0); }
@@ -382,8 +382,8 @@
 .tuner-dial {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.75rem 0;
+  gap: 0.2rem;
+  padding: 0.45rem 0;
   border-bottom: 1px solid var(--tuner-border);
 }
 .tuner-dial:last-child { border-bottom: 0; }
@@ -418,8 +418,8 @@
 /* Slider — native range, custom thumb + track */
 .tuner-slider-wrap {
   position: relative;
-  padding: 14px 0;
-  min-height: 44px;
+  padding: 6px 0;
+  min-height: 28px;
   display: flex;
   align-items: center;
 }
@@ -729,6 +729,10 @@
   .tuner-right {
     padding-top: 48px;
   }
+  /* Restore 44px touch targets on mobile — desktop is denser */
+  .tuner-slider-wrap { min-height: 44px; padding: 10px 0; }
+  .tuner-dial { padding: 0.7rem 0; gap: 0.35rem; }
+  .tuner-section-row { min-height: 44px; padding: 0.55rem 0.75rem; }
   .tuner-orb-a { display: none; }
   .tuner-grain { opacity: 0.3; }
 }
