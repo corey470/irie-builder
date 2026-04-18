@@ -92,11 +92,12 @@ export function TunerImagePanel({
   const radius = style.borderRadius ?? ''
   const alt = style.alt ?? target.alt
   const src = style.src ?? target.src
+  const isBg = target.kind === 'bg'
 
   return (
     <div className="tuner-object-panel">
       <section className="tuner-object-section">
-        <h3 className="tuner-group-label">Image</h3>
+        <h3 className="tuner-group-label">{isBg ? 'Background image' : 'Image'}</h3>
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img className="tuner-image-thumb" src={src} alt={alt || ''} />
@@ -107,7 +108,7 @@ export function TunerImagePanel({
             className="tuner-image-action is-primary"
             onClick={handleReplaceClick}
           >
-            Replace image
+            {isBg ? 'Replace background' : 'Replace image'}
           </button>
           <input
             ref={fileRef}
@@ -125,26 +126,28 @@ export function TunerImagePanel({
           placeholder="https:// or paste URL"
           onChange={(e) => handleUrlChange(e.target.value)}
           onBlur={(e) => handleUrlCommit(e.target.value.trim())}
-          aria-label="Image URL"
+          aria-label={isBg ? 'Background image URL' : 'Image URL'}
         />
       </section>
 
-      <section className="tuner-object-section">
-        <h3 className="tuner-group-label">Alt text</h3>
-        <input
-          type="text"
-          className="tuner-color-hex"
-          value={alt}
-          placeholder="Describe this image"
-          onChange={(e) => onChange({ alt: e.target.value })}
-          onBlur={(e) => onCommit({ alt: e.target.value })}
-          aria-label="Alt text"
-        />
-      </section>
+      {isBg ? null : (
+        <section className="tuner-object-section">
+          <h3 className="tuner-group-label">Alt text</h3>
+          <input
+            type="text"
+            className="tuner-color-hex"
+            value={alt}
+            placeholder="Describe this image"
+            onChange={(e) => onChange({ alt: e.target.value })}
+            onBlur={(e) => onCommit({ alt: e.target.value })}
+            aria-label="Alt text"
+          />
+        </section>
+      )}
 
       <section className="tuner-object-section">
         <h3 className="tuner-group-label">Fit</h3>
-        <div className="tuner-chips" role="radiogroup" aria-label="Object fit">
+        <div className="tuner-chips" role="radiogroup" aria-label={isBg ? 'Background size' : 'Object fit'}>
           {FIT_CHIPS.map((opt) => (
             <button
               key={opt.value}

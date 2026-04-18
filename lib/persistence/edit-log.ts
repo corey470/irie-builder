@@ -79,6 +79,27 @@ type TunerPresetEdit = {
   preset_id: string
   values: Record<string, number | string>
 }
+// Marquee object-mode edits — words, speed, colorMode, font. edit_json is
+// freeform so this slots in alongside the other kinds without a schema
+// change.
+type MarqueeEdit = {
+  kind: 'marquee'
+  element_id: string
+  before: {
+    words?: string[]
+    separator?: string
+    durationSeconds?: number
+    colorMode?: 'alternating' | 'cream' | 'gold'
+    font?: 'display' | 'body'
+  }
+  after: {
+    words?: string[]
+    separator?: string
+    durationSeconds?: number
+    colorMode?: 'alternating' | 'cream' | 'gold'
+    font?: 'display' | 'body'
+  }
+}
 export type EditDiff =
   | TextEdit
   | ImageEdit
@@ -86,6 +107,7 @@ export type EditDiff =
   | StyleEdit
   | TunerEdit
   | TunerPresetEdit
+  | MarqueeEdit
 
 function summarizeImage(value: string): string {
   if (!value) return '<empty>'

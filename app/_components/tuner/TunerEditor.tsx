@@ -32,9 +32,14 @@ import {
 } from '@/lib/tuner/bake-html'
 import {
   annotateObjects,
+  applyMarqueeStyle,
+  findBgImageElement,
   findImageElement,
+  findMarqueeElement,
   findTextElement,
   type ImageObject,
+  type MarqueeObject,
+  type MarqueeStyle,
   type ObjectInventory,
   type TextObject,
 } from '@/lib/tuner/object-model'
@@ -63,6 +68,7 @@ import {
   type TextStyle,
 } from './TunerTextPanel'
 import { TunerImagePanel, type ImageStyle } from './TunerImagePanel'
+import { TunerObjectMarquee } from './TunerObjectMarquee'
 import {
   TunerSectionStylePanel,
   type SectionStyleOverrides,
@@ -86,6 +92,7 @@ export type SelectionMode =
   | 'section-style'
   | 'text'
   | 'image'
+  | 'marquee'
 
 interface GenerationSnapshot {
   html?: string
@@ -94,6 +101,7 @@ interface GenerationSnapshot {
   textContent?: Record<string, string>
   textStyles?: Record<string, TextStyle>
   imageStyles?: Record<string, ImageStyle>
+  marqueeStyles?: Record<string, MarqueeStyle>
   sectionStyleOverrides?: Record<string, SectionStyleOverrides>
   accent?: string
   metadata?: {
@@ -187,6 +195,41 @@ export function applyImageStyle(el: HTMLImageElement, style: ImageStyle): void {
   if (style.borderRadius !== undefined) el.style.borderRadius = style.borderRadius
 }
 
+/**
+ * Bg-image equivalent of applyImageStyle. The assembler paints hero /
+ * testimonial / cta sections with CSS background-image instead of <img>,
+ * so the Image panel's Fit / Crop / Radius need to map to background-size
+ * / background-position / border-radius on whichever element actually
+ * owns the background (detected and annotated by object-model.ts).
+ *
+ * `src` is handled separately: we replace the url(…) token inside
+ * backgroundImage while preserving any existing linear-gradient overlay,
+ * so the dark tint the assembler adds for contrast survives a swap.
+ */
+export function applyBgImageStyle(el: HTMLElement, style: ImageStyle): void {
+  if (style.objectFit !== undefined) {
+    // cover/contain/fill/none/scale-down are valid background-size tokens
+    // except 'fill' and 'scale-down' which don't exist — map them.
+    const v = style.objectFit
+    el.style.backgroundSize =
+      v === 'fill' ? '100% 100%' : v === 'scale-down' ? 'contain' : v
+  }
+  if (style.objectPosition !== undefined) {
+    el.style.backgroundPosition = style.objectPosition
+  }
+  if (style.borderRadius !== undefined) el.style.borderRadius = style.borderRadius
+  if (style.src !== undefined) {
+    const current = el.style.backgroundImage
+    const newUrl = `url("${style.src}")`
+    if (current && /url\(/i.test(current)) {
+      // Replace the first url(…) token, preserve gradients.
+      el.style.backgroundImage = current.replace(/url\(([^)]*)\)/i, newUrl)
+    } else {
+      el.style.backgroundImage = newUrl
+    }
+  }
+}
+
 export function applySectionStyleOverrides(
   el: HTMLElement,
   style: SectionStyleOverrides,
@@ -276,7 +319,7 @@ export function TunerEditor() {
   )
 
   // Object-mode state
-  const [objects, setObjects] = useState<ObjectInventory>({ texts: [], images: [] })
+  const [objects, setObjects] = useState<ObjectInventory>({ texts: [], images: [], marquees: [] })
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('section-tune')
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null)
   const [textContent, setTextContent] = useState<Record<string, string>>(
@@ -287,6 +330,12 @@ export function TunerEditor() {
   )
   const [imageStyles, setImageStyles] = useState<Record<string, ImageStyle>>(
     readSnapshot()?.imageStyles ?? {},
+  )
+  // Marquee object-mode state — user edits replace the generator's words,
+  // change speed, color mode, font. Persisted through the same
+  // LAST_GENERATION_KEY snapshot shape as imageStyles/textStyles.
+  const [marqueeStyles, setMarqueeStyles] = useState<Record<string, MarqueeStyle>>(
+    readSnapshot()?.marqueeStyles ?? {},
   )
   const [sectionStyleOverrides, setSectionStyleOverrides] = useState<
     Record<string, SectionStyleOverrides>
@@ -342,8 +391,17 @@ export function TunerEditor() {
     }
   }, [])
 
-  /** Initial HTML to render in iframe. Pulled from localStorage. */
-  const initialHtml = useMemo(() => snapshot?.html ?? '', [snapshot])
+  /**
+   * Initial HTML to render in iframe — captured ONCE at mount. We deliberately
+   * avoid a useMemo over `snapshot` here because every persistNow() calls
+   * setSnapshot() with a freshly-baked HTML string. If the iframe's srcDoc
+   * tracked that, every edit-save would re-render the iframe and reset
+   * scrollTop to 0 (Corey's Bug 6: dial edits on Story > Body 3 snapping the
+   * preview back to the hero). Live edits mutate the iframe DOM in place;
+   * the baked HTML still persists to localStorage/Supabase for refresh.
+   * Re-entering /edit remounts the component, which re-reads the snapshot.
+   */
+  const [initialHtml] = useState<string>(() => readSnapshot()?.html ?? '')
 
   // Refs kept in sync with the latest state for async callbacks.
   const tunerStateRef = useRef<TunerState>(tunerState)
@@ -362,6 +420,10 @@ export function TunerEditor() {
   useEffect(() => {
     imageStylesRef.current = imageStyles
   }, [imageStyles])
+  const marqueeStylesRef = useRef(marqueeStyles)
+  useEffect(() => {
+    marqueeStylesRef.current = marqueeStyles
+  }, [marqueeStyles])
   const sectionStyleOverridesRef = useRef(sectionStyleOverrides)
   useEffect(() => {
     sectionStyleOverridesRef.current = sectionStyleOverrides
@@ -407,11 +469,18 @@ export function TunerEditor() {
       if (el) applyTextStyle(el, style)
     })
     Object.entries(imageStylesRef.current).forEach(([id, style]) => {
-      const el = findImageElement(doc, id)
-      if (el) {
+      const el = findBgImageElement(doc, id)
+      if (!el) return
+      if (el instanceof HTMLImageElement) {
         applyImageStyle(el, style)
         if (style.src) el.src = style.src
+      } else {
+        applyBgImageStyle(el, style)
       }
+    })
+    Object.entries(marqueeStylesRef.current).forEach(([id, style]) => {
+      const el = findMarqueeElement(doc, id)
+      if (el) applyMarqueeStyle(el, style)
     })
     Object.entries(sectionStyleOverridesRef.current).forEach(([id, style]) => {
       const el = findSectionNode(doc, id)
@@ -452,6 +521,10 @@ export function TunerEditor() {
     if (selectionMode !== 'image' || !selectedObjectId) return null
     return objects.images.find((i) => i.id === selectedObjectId) ?? null
   }, [selectionMode, selectedObjectId, objects.images])
+  const selectedMarquee = useMemo<MarqueeObject | null>(() => {
+    if (selectionMode !== 'marquee' || !selectedObjectId) return null
+    return objects.marquees.find((m) => m.id === selectedObjectId) ?? null
+  }, [selectionMode, selectedObjectId, objects.marquees])
 
   // ───── Toasts ─────────────────────────────────────────────────────────
   const addToast = useCallback((message: string, shortcut?: string, ttl?: number) => {
@@ -490,6 +563,7 @@ export function TunerEditor() {
       textContent: textContentRef.current,
       textStyles: textStylesRef.current,
       imageStyles: imageStylesRef.current,
+      marqueeStyles: marqueeStylesRef.current,
       sectionStyleOverrides: sectionStyleOverridesRef.current,
       accent: accentRef.current,
       metadata: snap?.metadata
@@ -629,7 +703,13 @@ export function TunerEditor() {
             before_summary: string
             after_summary: string
           }
-        | { kind: 'accent'; before: string; after: string },
+        | { kind: 'accent'; before: string; after: string }
+        | {
+            kind: 'marquee'
+            element_id: string
+            before: Partial<MarqueeStyle>
+            after: Partial<MarqueeStyle>
+          },
     ) => {
       const ctx = ctxRef.current
       if (!ctx) return
@@ -744,7 +824,7 @@ export function TunerEditor() {
       clearObjectRings()
       if (!id || !kind) return
       const el =
-        kind === 'text' ? findTextElement(doc, id) : findImageElement(doc, id)
+        kind === 'text' ? findTextElement(doc, id) : findBgImageElement(doc, id)
       if (!el) return
       el.classList.add('is-irie-object-selected')
       if (kind === 'text') {
@@ -812,6 +892,26 @@ export function TunerEditor() {
     [objects.images],
   )
 
+  const selectMarqueeObject = useCallback(
+    (id: string) => {
+      const match = objects.marquees.find((m) => m.id === id)
+      if (!match) return
+      if (match.sectionId) setActiveId(match.sectionId)
+      setSelectionMode('marquee')
+      setSelectedObjectId(id)
+      if (match.sectionId) {
+        setExpandedSections((prev) => {
+          if (prev.has(match.sectionId!)) return prev
+          const next = new Set(prev)
+          next.add(match.sectionId!)
+          return next
+        })
+      }
+      setDrawerOpen(true)
+    },
+    [objects.marquees],
+  )
+
   const selectSection = useCallback(
     (id: string, mode: 'section-tune' | 'section-style' = 'section-tune') => {
       setActiveId(id)
@@ -863,6 +963,10 @@ export function TunerEditor() {
       }
       if (result.kind === 'image' && result.id) {
         selectImageObject(result.id)
+        return
+      }
+      if (result.kind === 'marquee' && result.id) {
+        selectMarqueeObject(result.id)
         return
       }
       if (result.kind === 'section' && result.sectionId) {
@@ -950,7 +1054,7 @@ export function TunerEditor() {
       doc.removeEventListener('focusin', onFocusIn)
       doc.removeEventListener('focusout', onFocusOut)
     }
-  }, [sections.length, objects.texts.length, objects.images.length, pushEntry, persistSoon, selectTextObject, selectImageObject, selectSection, logObjectEdit])
+  }, [sections.length, objects.texts.length, objects.images.length, objects.marquees.length, pushEntry, persistSoon, selectTextObject, selectImageObject, selectMarqueeObject, selectSection, logObjectEdit])
 
   // Stamp data-irie-section-label on each section so ring tooltips read it
   useEffect(() => {
@@ -1323,10 +1427,14 @@ export function TunerEditor() {
     (id: string, patch: Partial<ImageStyle>, commit: boolean) => {
       const doc = iframeRef.current?.contentDocument
       if (!doc) return
-      const el = findImageElement(doc, id)
+      const el = findBgImageElement(doc, id)
       if (!el) return
-      applyImageStyle(el, patch as ImageStyle)
-      if (patch.src) el.src = patch.src
+      if (el instanceof HTMLImageElement) {
+        applyImageStyle(el, patch as ImageStyle)
+        if (patch.src) el.src = patch.src
+      } else {
+        applyBgImageStyle(el, patch as ImageStyle)
+      }
       setImageStyles((prev) => ({
         ...prev,
         [id]: { ...(prev[id] || {}), ...patch },
@@ -1345,10 +1453,14 @@ export function TunerEditor() {
       pushEntry({
         kind: 'image',
         apply: (d) => {
-          const e = findImageElement(d, id)
+          const e = findBgImageElement(d, id)
           if (e) {
-            applyImageStyle(e, after as ImageStyle)
-            if (after.src) e.src = after.src
+            if (e instanceof HTMLImageElement) {
+              applyImageStyle(e, after as ImageStyle)
+              if (after.src) e.src = after.src
+            } else {
+              applyBgImageStyle(e, after as ImageStyle)
+            }
           }
           setImageStyles((prev) => ({
             ...prev,
@@ -1356,10 +1468,14 @@ export function TunerEditor() {
           }))
         },
         revert: (d) => {
-          const e = findImageElement(d, id)
+          const e = findBgImageElement(d, id)
           if (e) {
-            applyImageStyle(e, before as ImageStyle)
-            if (before.src) e.src = before.src
+            if (e instanceof HTMLImageElement) {
+              applyImageStyle(e, before as ImageStyle)
+              if (before.src) e.src = before.src
+            } else {
+              applyBgImageStyle(e, before as ImageStyle)
+            }
           }
           setImageStyles((prev) => ({
             ...prev,
@@ -1395,6 +1511,94 @@ export function TunerEditor() {
     },
     [persistSoon, pushEntry, logObjectEdit],
   )
+
+  // Marquee object-mode handler — words, speed, colorMode, font. Mirrors
+  // handleImageChange: applies live via applyMarqueeStyle, pushes an
+  // undo entry, logs kind:'marquee' (new EditDiff variant — freeform
+  // inside edit_json, no schema change).
+  const handleMarqueeChange = useCallback(
+    (id: string, patch: Partial<MarqueeStyle>, commit: boolean) => {
+      const doc = iframeRef.current?.contentDocument
+      if (!doc) return
+      const el = findMarqueeElement(doc, id)
+      if (!el) return
+      applyMarqueeStyle(el, patch as MarqueeStyle)
+      setMarqueeStyles((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), ...patch },
+      }))
+      if (!commit) return
+      const prior = marqueeStylesRef.current[id] || {}
+      const before: Partial<MarqueeStyle> = {}
+      const after: Partial<MarqueeStyle> = { ...patch }
+      ;(Object.keys(patch) as Array<keyof MarqueeStyle>).forEach((k) => {
+        ;(before as Record<string, unknown>)[k] =
+          (prior as Record<string, unknown>)[k] ?? undefined
+      })
+      pushEntry({
+        kind: 'marquee',
+        apply: (d) => {
+          const e = findMarqueeElement(d, id)
+          if (e) applyMarqueeStyle(e, after as MarqueeStyle)
+          setMarqueeStyles((prev) => ({
+            ...prev,
+            [id]: { ...(prev[id] || {}), ...after },
+          }))
+        },
+        revert: (d) => {
+          const e = findMarqueeElement(d, id)
+          if (e) applyMarqueeStyle(e, before as MarqueeStyle)
+          setMarqueeStyles((prev) => ({
+            ...prev,
+            [id]: { ...(prev[id] || {}), ...before },
+          }))
+        },
+      })
+      persistSoon()
+      void logObjectEdit({
+        kind: 'marquee',
+        element_id: id,
+        before,
+        after,
+      })
+    },
+    [persistSoon, pushEntry, logObjectEdit],
+  )
+
+  const handleRevertMarquee = useCallback(() => {
+    if (!selectedMarquee) return
+    const id = selectedMarquee.id
+    const prior = marqueeStylesRef.current[id]
+    if (!prior || Object.keys(prior).length === 0) return
+    // Push a reset entry so ⌘Z can undo the revert.
+    pushEntry({
+      kind: 'marquee',
+      apply: (d) => {
+        const e = findMarqueeElement(d, id)
+        if (e) {
+          // Clear inline overrides on the spans; let stylesheet rules
+          // reassert the generator's original look.
+          e.querySelectorAll<HTMLElement>('span').forEach((s) => {
+            s.style.color = ''
+            s.style.fontFamily = ''
+            s.style.fontStyle = ''
+          })
+          e.style.animationDuration = ''
+        }
+        setMarqueeStyles((prev) => {
+          const next = { ...prev }
+          delete next[id]
+          return next
+        })
+      },
+      revert: (d) => {
+        const e = findMarqueeElement(d, id)
+        if (e) applyMarqueeStyle(e, prior)
+        setMarqueeStyles((prev) => ({ ...prev, [id]: prior }))
+      },
+    })
+    persistSoon()
+  }, [persistSoon, pushEntry, selectedMarquee])
 
   // Section-style (absolute px padding + bg + overlay) handlers
   const handleSectionStyleChange = useCallback(
@@ -1719,6 +1923,16 @@ export function TunerEditor() {
         run: () => setAccentPopoverOpen(true),
       },
       {
+        id: 'edit-marquee',
+        label: 'Edit marquee text…',
+        group: 'Objects',
+        run: () => {
+          const first = objects.marquees[0]
+          if (first) selectMarqueeObject(first.id)
+          else addToast('No marquee in this generation')
+        },
+      },
+      {
         id: 'fullscreen',
         label: 'Fullscreen preview',
         group: 'View',
@@ -2027,15 +2241,46 @@ export function TunerEditor() {
                 })
                 const doc = iframeRef.current?.contentDocument
                 if (doc) {
-                  const el = findImageElement(doc, selectedImage.id)
+                  const el = findBgImageElement(doc, selectedImage.id)
                   if (el) {
-                    el.style.objectFit = ''
-                    el.style.objectPosition = ''
-                    el.style.borderRadius = ''
+                    if (el instanceof HTMLImageElement) {
+                      el.style.objectFit = ''
+                      el.style.objectPosition = ''
+                      el.style.borderRadius = ''
+                    } else {
+                      el.style.backgroundSize = ''
+                      el.style.backgroundPosition = ''
+                      el.style.borderRadius = ''
+                    }
                   }
                 }
                 persistSoon()
               }}
+            />
+          </div>
+        </aside>
+      )
+    }
+    if (selectionMode === 'marquee' && selectedMarquee) {
+      const activeMarqueeStyle = marqueeStyles[selectedMarquee.id] ?? {}
+      return (
+        <aside className="tuner-right" aria-label="Marquee controls">
+          <header className="tuner-right-header">
+            <span className="tuner-section-badge">marquee</span>
+            <h2 className="tuner-right-title">{selectedMarquee.label}</h2>
+            {renderModeChips()}
+          </header>
+          <div className="tuner-right-body">
+            <TunerObjectMarquee
+              target={selectedMarquee}
+              style={activeMarqueeStyle}
+              onChange={(patch) =>
+                handleMarqueeChange(selectedMarquee.id, patch, false)
+              }
+              onCommit={(patch) =>
+                handleMarqueeChange(selectedMarquee.id, patch, true)
+              }
+              onRevertObject={handleRevertMarquee}
             />
           </div>
         </aside>

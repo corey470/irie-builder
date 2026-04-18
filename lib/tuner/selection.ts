@@ -14,11 +14,11 @@
  * object-text mode, or enter object-image mode.
  */
 
-export type SelectionKind = 'section' | 'text' | 'image' | null
+export type SelectionKind = 'section' | 'text' | 'image' | 'marquee' | null
 
 export interface SelectionResult {
   kind: SelectionKind
-  /** Id on the matched element itself (edit-id for text/image, section-id for section). */
+  /** Id on the matched element itself (edit-id for text/image, section-id for section, marquee-id for marquee). */
   id: string | null
   /** Section id containing the matched element (always populated when kind ≠ null). */
   sectionId: string | null
@@ -35,8 +35,27 @@ const EMPTY: SelectionResult = {
 
 export function classifyClickTarget(target: EventTarget | null): SelectionResult {
   if (!(target instanceof Element)) return EMPTY
-  // Image FIRST — images are leaves inside text/figure, but clicking an
-  // image should focus the image, not the caption.
+  // Marquee FIRST — words inside .marquee-track get annotated as text nodes
+  // by the assembler, so without this check the text classifier would win.
+  // We want clicks anywhere inside a .marquee or .marquee-track strip to
+  // open the marquee panel, not the individual word edit.
+  const marqueeEl = target.closest<HTMLElement>(
+    '[data-irie-marquee-id], .marquee, .marquee-track',
+  )
+  if (marqueeEl) {
+    const id = marqueeEl.getAttribute('data-irie-marquee-id')
+    if (id) {
+      const sectionEl = marqueeEl.closest<HTMLElement>('[data-irie-section-id]')
+      return {
+        kind: 'marquee',
+        id,
+        sectionId: sectionEl?.getAttribute('data-irie-section-id') ?? null,
+        element: marqueeEl,
+      }
+    }
+  }
+  // Image — bare <img> or any element with data-irie-image-id (bg-image
+  // sections annotated by object-model).
   const imageEl = target.closest<HTMLElement>(
     'img, [data-irie-image-id]',
   )
