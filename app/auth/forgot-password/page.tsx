@@ -14,16 +14,32 @@ export default function ForgotPasswordPage() {
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
     setError('')
+    if (!email) {
+      setError('Enter your email and we will send you a reset link.')
+      return
+    }
     setLoading(true)
     const supabase = createClient()
     const redirectTo = `${window.location.origin}/auth/reset-password`
+    // Always show success — never reveal whether the email is registered.
+    // Errors that aren't "user not found" are still surfaced.
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
       email,
       { redirectTo },
     )
     setLoading(false)
     if (resetError) {
-      setError("We couldn't send the reset link. Try again?")
+      const lower = resetError.message.toLowerCase()
+      // Treat user-not-found / similar as success so we don't leak existence.
+      if (
+        lower.includes('not found') ||
+        lower.includes('does not exist') ||
+        lower.includes('email')
+      ) {
+        setSent(true)
+        return
+      }
+      setError("We couldn't send the reset link. Try again in a moment?")
       return
     }
     setSent(true)
@@ -31,11 +47,27 @@ export default function ForgotPasswordPage() {
 
   if (sent) {
     return (
-      <AuthShell title="Check your inbox.">
+      <AuthShell
+        eyebrow="Reset link sent"
+        title="Check your inbox."
+        subtitle="If an account exists for that email, a reset link is on the way."
+      >
         <p className="auth-success">
-          We sent a reset link to <strong>{email}</strong>. Check your inbox.
+          The link expires in about an hour. Didn&apos;t get it? Check your
+          spam folder, or send a new one.
         </p>
         <div className="auth-links">
+          <button
+            type="button"
+            className="auth-link"
+            onClick={() => {
+              setSent(false)
+              setEmail('')
+            }}
+            style={{ background: 'transparent', border: 0, font: 'inherit', cursor: 'pointer' }}
+          >
+            Send another
+          </button>
           <Link href="/login" className="auth-link">
             Back to sign in
           </Link>
@@ -46,8 +78,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
+      eyebrow="Forgot password"
       title="Reset your password"
-      subtitle="Your email. We'll send a link."
+      subtitle="Enter your email. We'll send you a link."
     >
       <form onSubmit={onSubmit} noValidate>
         {error ? (
@@ -70,7 +103,8 @@ export default function ForgotPasswordPage() {
           />
         </div>
         <button className="auth-submit" type="submit" disabled={loading}>
-          {loading ? 'Sending…' : 'Send reset link'}
+          {loading ? <span className="auth-spinner" aria-hidden="true" /> : null}
+          {loading ? 'Sending link…' : 'Send reset link'}
         </button>
         <div className="auth-links">
           <Link href="/login" className="auth-link">

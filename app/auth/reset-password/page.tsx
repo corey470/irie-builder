@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AuthShell } from '@/app/_auth/AuthShell'
+import { PasswordInput } from '@/app/_auth/PasswordInput'
 import { createClient } from '@/lib/supabase/client'
 
 type BootstrapStatus = 'checking' | 'ready' | 'invalid'
@@ -25,7 +26,6 @@ export default function ResetPasswordPage() {
     const supabase = createClient()
 
     async function bootstrap() {
-      // 1. PKCE code exchange
       const search = new URLSearchParams(window.location.search)
       const code = search.get('code')
       if (code) {
@@ -40,7 +40,6 @@ export default function ResetPasswordPage() {
         return
       }
 
-      // 2. Implicit-flow hash fragment
       if (window.location.hash && window.location.hash.length > 1) {
         const hash = new URLSearchParams(window.location.hash.slice(1))
         const access_token = hash.get('access_token')
@@ -51,11 +50,11 @@ export default function ResetPasswordPage() {
           return
         }
         if (access_token && refresh_token) {
-          const { error: setError } = await supabase.auth.setSession({
+          const { error: setErr } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           })
-          if (setError) {
+          if (setErr) {
             setStatus('invalid')
             return
           }
@@ -65,7 +64,6 @@ export default function ResetPasswordPage() {
         }
       }
 
-      // 3. Already have a user (rare — e.g. returning after a partial flow)
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -99,7 +97,11 @@ export default function ResetPasswordPage() {
 
   if (status === 'checking') {
     return (
-      <AuthShell title="One moment." subtitle="Confirming your reset link…">
+      <AuthShell
+        eyebrow="One moment"
+        title="Confirming your link…"
+        subtitle="Just a second."
+      >
         <div style={{ minHeight: '2rem' }} />
       </AuthShell>
     )
@@ -108,11 +110,12 @@ export default function ResetPasswordPage() {
   if (status === 'invalid') {
     return (
       <AuthShell
-        title="This link expired."
-        subtitle="Reset links are good for a short window."
+        eyebrow="Link expired"
+        title="This link no longer works."
+        subtitle="Reset links are good for about an hour."
       >
         <div className="auth-links">
-          <Link href="/auth/forgot-password" className="auth-link">
+          <Link href="/forgot-password" className="auth-link">
             Send a new reset link
           </Link>
           <Link href="/login" className="auth-link">
@@ -124,45 +127,37 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <AuthShell title="Set a new password">
+    <AuthShell
+      eyebrow="Reset"
+      title="Set a new password"
+      subtitle="Make it a good one — we'll sign you in after."
+    >
       <form onSubmit={onSubmit} noValidate>
         {error ? (
           <div className="auth-alert" role="alert">
             {error}
           </div>
         ) : null}
-        <div className="auth-field">
-          <label htmlFor="password" className="auth-label">
-            New password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            minLength={8}
-            className="auth-input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <div className="auth-field">
-          <label htmlFor="confirm" className="auth-label">
-            Confirm password
-          </label>
-          <input
-            id="confirm"
-            type="password"
-            required
-            autoComplete="new-password"
-            minLength={8}
-            className="auth-input"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </div>
+        <PasswordInput
+          id="password"
+          label="New password"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          minLength={8}
+          helper="At least 8 characters."
+        />
+        <PasswordInput
+          id="confirm"
+          label="Confirm password"
+          value={confirm}
+          onChange={setConfirm}
+          autoComplete="new-password"
+          minLength={8}
+        />
         <button className="auth-submit" type="submit" disabled={loading}>
-          {loading ? 'Saving…' : 'Save new password'}
+          {loading ? <span className="auth-spinner" aria-hidden="true" /> : null}
+          {loading ? 'Setting new password…' : 'Save new password'}
         </button>
         <div className="auth-links">
           <Link href="/login" className="auth-link">

@@ -1,17 +1,33 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AuthShell } from '@/app/_auth/AuthShell'
+import { PasswordInput } from '@/app/_auth/PasswordInput'
 import { createClient } from '@/lib/supabase/client'
 
+/** Cheap visual strength estimate. NOT a security gate — purely cosmetic. */
+function strength(pw: string): { score: 0 | 1 | 2 | 3 | 4; label: string } {
+  let s = 0
+  if (pw.length >= 8) s++
+  if (pw.length >= 12) s++
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++
+  if (/\d/.test(pw) || /[^A-Za-z0-9]/.test(pw)) s++
+  const labels = ['Too short', 'Weak', 'Okay', 'Strong', 'Very strong']
+  return { score: s as 0 | 1 | 2 | 3 | 4, label: pw ? labels[s] : '' }
+}
+
 export default function SignupPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+
+  const { score, label: strengthLabel } = strength(password)
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -27,7 +43,7 @@ export default function SignupPage() {
     setLoading(true)
     const supabase = createClient()
     const emailRedirectTo = `${window.location.origin}/auth/confirm`
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo },
@@ -42,12 +58,22 @@ export default function SignupPage() {
       )
       return
     }
+    // If a session was returned, email confirmation is OFF — go straight to dashboard.
+    if (data.session) {
+      router.push('/dashboard')
+      router.refresh()
+      return
+    }
     setSent(true)
   }
 
   if (sent) {
     return (
-      <AuthShell title="Check your email." subtitle="You're almost in.">
+      <AuthShell
+        eyebrow="Almost in"
+        title="Check your email."
+        subtitle="We sent you a confirmation link."
+      >
         <p className="auth-success">
           We just sent a confirmation link to <strong>{email}</strong>. Click it
           to finish creating your account.
@@ -63,8 +89,9 @@ export default function SignupPage() {
 
   return (
     <AuthShell
+      eyebrow="One account, every Irie"
       title="Start building"
-      subtitle="One account. Every Irie you'll ever make."
+      subtitle="Free while we're in beta."
     >
       <form onSubmit={onSubmit} noValidate>
         {error ? (
@@ -86,38 +113,36 @@ export default function SignupPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        <div className="auth-field">
-          <label htmlFor="password" className="auth-label">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            minLength={8}
-            className="auth-input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <div className="auth-field">
-          <label htmlFor="confirm" className="auth-label">
-            Confirm password
-          </label>
-          <input
-            id="confirm"
-            type="password"
-            required
-            autoComplete="new-password"
-            minLength={8}
-            className="auth-input"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </div>
+        <PasswordInput
+          id="password"
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          autoComplete="new-password"
+          minLength={8}
+          helper="At least 8 characters."
+        />
+        {password ? (
+          <>
+            <div className="auth-strength" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => (
+                <span key={i} className={`auth-strength-seg${i < score ? ' is-on' : ''}`} />
+              ))}
+            </div>
+            <p className="auth-strength-label">{strengthLabel}</p>
+          </>
+        ) : null}
+        <PasswordInput
+          id="confirm"
+          label="Confirm password"
+          value={confirm}
+          onChange={setConfirm}
+          autoComplete="new-password"
+          minLength={8}
+        />
         <button className="auth-submit" type="submit" disabled={loading}>
-          {loading ? 'Creating…' : 'Create your account'}
+          {loading ? <span className="auth-spinner" aria-hidden="true" /> : null}
+          {loading ? 'Creating account…' : 'Create your account'}
         </button>
         <div className="auth-links">
           <span>
