@@ -26,6 +26,7 @@ export type HistoryKind =
   | 'image'
   | 'style'
   | 'accent'
+  | 'marquee'
 
 export interface HistoryEntry {
   kind: HistoryKind
