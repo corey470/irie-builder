@@ -1,9 +1,14 @@
 import { callJsonAgent } from '@/lib/agents/anthropic'
 import { MODELS } from '@/lib/agents/config'
+import { createClient as createSupabaseServerClient } from '@/lib/supabase/server'
+import { checkAndIncrement, deriveRateKey, rateLimitResponse } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 export const dynamic = 'force-dynamic'
+
+// Same-ish cap as /api/generate — the body is just `{ url: "…" }`, 8KB is plenty.
+const MAX_BODY_BYTES = 8 * 1024
 
 interface CloneRequestBody {
   url?: unknown
@@ -28,9 +33,42 @@ const FIRECRAWL_ENDPOINT = 'https://api.firecrawl.dev/v1/scrape'
 const MAX_MARKDOWN_CHARS = 12000
 
 export async function POST(request: Request) {
+  // Cheap header gate before buffering. Body is a one-key JSON object —
+  // anything big is by definition not a real request.
+  const contentLengthHeader = request.headers.get('content-length')
+  if (contentLengthHeader) {
+    const declared = Number.parseInt(contentLengthHeader, 10)
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      return jsonError('Request payload too large', 413)
+    }
+  }
+
+  // Rate limit before we spend Firecrawl + Anthropic budget.
+  try {
+    const supabase = await createSupabaseServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const key = deriveRateKey({ userId: user?.id, request })
+    const verdict = checkAndIncrement(key, { max: 60, windowMs: 60 * 60 * 1000 })
+    if (!verdict.ok) {
+      return rateLimitResponse(verdict.retryAfterSeconds, 'clone')
+    }
+  } catch {
+    // See /api/generate for rationale — prefer serving a legit request.
+  }
+
+  let rawBuffer: ArrayBuffer
+  try {
+    rawBuffer = await request.arrayBuffer()
+  } catch {
+    return jsonError('Unable to read request body', 400)
+  }
+  if (rawBuffer.byteLength > MAX_BODY_BYTES) {
+    return jsonError('Request payload too large', 413)
+  }
+
   let payload: CloneRequestBody
   try {
-    payload = await request.json()
+    payload = JSON.parse(new TextDecoder().decode(rawBuffer)) as CloneRequestBody
   } catch {
     return jsonError('Invalid JSON in request body', 400)
   }

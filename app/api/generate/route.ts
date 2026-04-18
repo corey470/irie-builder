@@ -1,6 +1,8 @@
 import { runOrchestrator } from '@/lib/agents/orchestrator'
 import { initStatus, clearStatus } from '@/lib/agents/status-store'
 import { logError } from '@/lib/logging'
+import { createClient as createSupabaseServerClient } from '@/lib/supabase/server'
+import { checkAndIncrement, deriveRateKey, rateLimitResponse } from '@/lib/rate-limit'
 import type { BriefInput, StreamEvent } from '@/lib/agents/types'
 
 const MAX_BODY_BYTES = 50 * 1024
@@ -60,6 +62,36 @@ interface RawRequest {
 }
 
 export async function POST(request: Request) {
+  // Cheap header gate BEFORE we buffer — the old order read the entire
+  // body into memory and then decided it was too big. A malicious client
+  // could drain memory by uploading a 500MB payload. The post-buffer
+  // check is kept as belt-and-suspenders (headers can be missing / lied
+  // about).
+  const contentLengthHeader = request.headers.get('content-length')
+  if (contentLengthHeader) {
+    const declared = Number.parseInt(contentLengthHeader, 10)
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      return jsonError('Request payload exceeds 50KB limit', 413)
+    }
+  }
+
+  // Rate limit before any expensive work (model calls, network fanout).
+  // Keyed by authenticated user id when available, IP fallback otherwise.
+  // In-memory per-process — see lib/rate-limit.ts caveat.
+  try {
+    const supabase = await createSupabaseServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const key = deriveRateKey({ userId: user?.id, request })
+    const verdict = checkAndIncrement(key, { max: 30, windowMs: 60 * 60 * 1000 })
+    if (!verdict.ok) {
+      return rateLimitResponse(verdict.retryAfterSeconds, 'generate')
+    }
+  } catch {
+    // If Supabase or the limiter itself blows up, fall through rather than
+    // hard-failing the request — we'd rather serve a legitimate generation
+    // than 500 on a transient auth-cookie read error.
+  }
+
   let rawBuffer: ArrayBuffer
   try {
     rawBuffer = await request.arrayBuffer()
