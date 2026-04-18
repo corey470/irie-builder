@@ -43,6 +43,23 @@ export function PersistenceGate({ children }: { children: ReactNode }) {
         return
       }
 
+      // Guard against stale test-fixture sessions. The seed users created
+      // during Phase A testing (phase-a-test-*@irie-builder.test) left six
+      // sticky sessions on production; Corey's real browser was silently
+      // authenticated as one of them, and every generation got attributed
+      // to the seed user's uid. Real users never have @irie-builder.test
+      // emails — if we see one, sign the session out and bounce to /login
+      // so the user can sign in as themselves.
+      if (user.email && /@irie-builder\.test$/i.test(user.email)) {
+        // eslint-disable-next-line no-console
+        console.warn('[persistence] stale seed session detected, signing out', { email: user.email })
+        await supabase.auth.signOut()
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login?error=stale_test_session'
+        }
+        return
+      }
+
       try {
         const { project, rescued } = await getOrCreateCurrentProject(
           supabase,
