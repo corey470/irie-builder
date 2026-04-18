@@ -29,17 +29,22 @@ export default function ForgotPasswordPage() {
     )
     setLoading(false)
     if (resetError) {
-      const lower = resetError.message.toLowerCase()
-      // Treat user-not-found / similar as success so we don't leak existence.
-      if (
-        lower.includes('not found') ||
-        lower.includes('does not exist') ||
-        lower.includes('email')
-      ) {
+      // Enumeration defense: "user not found" must look identical to
+      // success, so we only swallow that specific class of error. The old
+      // `includes('email')` check swallowed rate-limit and delivery errors
+      // too ("Email rate limit exceeded", "Error sending recovery email",
+      // …) and lied to the user. Match narrowly.
+      const msg = resetError.message
+      const looksLikeUnknownUser =
+        /user.*(not.*found|does.*not.*exist)/i.test(msg) ||
+        /not.*registered/i.test(msg)
+      if (looksLikeUnknownUser) {
         setSent(true)
         return
       }
-      setError("We couldn't send the reset link. Try again in a moment?")
+      setError(
+        "Couldn't send the reset right now — try again in a few minutes.",
+      )
       return
     }
     setSent(true)
