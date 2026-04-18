@@ -39,8 +39,6 @@ import { TunerTopBar } from './TunerTopBar'
 import { TunerLeftRail } from './TunerLeftRail'
 import { TunerPreviewFrame } from './TunerPreviewFrame'
 import { TunerPanel } from './TunerPanel'
-import { TunerAtmosphere } from './TunerAtmosphere'
-import { TunerCursor } from './TunerCursor'
 import { TunerMobileDrawer } from './TunerMobileDrawer'
 import './tuner.css'
 
@@ -109,6 +107,7 @@ export function TunerEditor() {
     readTunerStateFromSnapshot(readSnapshot()),
   )
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [viewport, setViewport] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const supabaseRef = useRef(createClient())
   const ctxRef = useRef<EditorContext | null>(null)
@@ -399,9 +398,11 @@ export function TunerEditor() {
 
   return (
     <div className={rootClass}>
-      <TunerAtmosphere />
       <TunerTopBar
         saveStatus={saveStatus}
+        crumbCurrent={activeSection?.label}
+        viewport={viewport}
+        onChangeViewport={setViewport}
         onDownload={handleDownload}
         onExport={handleExport}
       />
@@ -417,6 +418,7 @@ export function TunerEditor() {
         ref={iframeRef}
         html={initialHtml}
         onLoad={handleIframeLoad}
+        viewport={viewport}
       />
       <TunerPanel
         section={activeSection}
@@ -440,7 +442,6 @@ export function TunerEditor() {
           }}
         />
       </div>
-      <TunerCursor />
     </div>
   )
 }

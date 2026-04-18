@@ -8,6 +8,16 @@ interface TunerDialProps {
   value: number | string
   onChange: (next: number | string) => void
   onCommit?: (final: number | string) => void
+  onReset?: () => void
+}
+
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 4.5A4 4 0 1 0 12 8" />
+      <path d="M11 1.5v3h-3" />
+    </svg>
+  )
 }
 
 function formatSlider(dial: Extract<Dial, { type: 'slider' }>, value: number): string {
@@ -15,7 +25,15 @@ function formatSlider(dial: Extract<Dial, { type: 'slider' }>, value: number): s
   return dial.unit ? `${value}${dial.unit}` : String(value)
 }
 
-export function TunerDial({ dial, value, onChange, onCommit }: TunerDialProps) {
+function dialIsChanged(dial: Dial, value: number | string): boolean {
+  if (dial.type === 'slider') {
+    const n = typeof value === 'number' ? value : Number.parseFloat(String(value))
+    return Number.isFinite(n) ? n !== dial.default : false
+  }
+  return String(value) !== String(dial.default)
+}
+
+export function TunerDial({ dial, value, onChange, onCommit, onReset }: TunerDialProps) {
   const handleSliderInput = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       onChange(Number.parseFloat(event.target.value))
@@ -29,15 +47,34 @@ export function TunerDial({ dial, value, onChange, onCommit }: TunerDialProps) {
     [onCommit],
   )
 
+  const changed = dialIsChanged(dial, value)
+  const dialCls = `tuner-dial${changed ? ' is-changed' : ''}`
+
   if (dial.type === 'slider') {
     const numValue = typeof value === 'number' ? value : Number.parseFloat(String(value))
-    const tuned = numValue !== dial.default
+    const safeValue = Number.isFinite(numValue) ? numValue : dial.default
     return (
-      <div className="tuner-dial">
+      <div className={dialCls}>
         <div className="tuner-dial-header">
-          <span className="tuner-dial-label">{dial.label}</span>
-          <span className={`tuner-dial-readout${tuned ? ' is-tuned' : ''}`} aria-hidden="true">
-            {formatSlider(dial, Number.isFinite(numValue) ? numValue : dial.default)}
+          <span className="tuner-dial-label">
+            {dial.label}
+            <span className="tuner-dial-changed" aria-hidden="true" />
+          </span>
+          <span className="tuner-dial-actions">
+            <span className={`tuner-dial-readout${changed ? ' is-tuned' : ''}`} aria-hidden="true">
+              {formatSlider(dial, safeValue)}
+            </span>
+            {changed && onReset ? (
+              <button
+                type="button"
+                className="tuner-dial-reset"
+                onClick={onReset}
+                aria-label={`Reset ${dial.label}`}
+                title={`Reset to ${formatSlider(dial, dial.default)}`}
+              >
+                <ResetIcon />
+              </button>
+            ) : null}
           </span>
         </div>
         <div className="tuner-slider-wrap">
@@ -47,37 +84,50 @@ export function TunerDial({ dial, value, onChange, onCommit }: TunerDialProps) {
             min={dial.min}
             max={dial.max}
             step={dial.step}
-            value={Number.isFinite(numValue) ? numValue : dial.default}
+            value={safeValue}
             onChange={handleSliderInput}
             onMouseUp={handleSliderCommit}
             onTouchEnd={handleSliderCommit}
             onKeyUp={handleSliderCommit}
-            aria-label={`${dial.label} — ${formatSlider(dial, Number.isFinite(numValue) ? numValue : dial.default)}`}
-            data-hover="interactive"
+            aria-label={`${dial.label} — ${formatSlider(dial, safeValue)}`}
           />
         </div>
+        <span className="tuner-dial-hint" aria-hidden="true">
+          <kbd>←</kbd><kbd>→</kbd> ±{dial.step} · <kbd>⇧</kbd>×10
+        </span>
       </div>
     )
   }
 
   if (dial.type === 'chips') {
     const current = String(value)
-    const tuned = current !== dial.default
     const activeLabel =
       dial.options.find((o) => o.value === current)?.label ?? current
     return (
-      <div className="tuner-dial">
+      <div className={dialCls}>
         <div className="tuner-dial-header">
-          <span className="tuner-dial-label">{dial.label}</span>
-          <span className={`tuner-dial-readout${tuned ? ' is-tuned' : ''}`} aria-hidden="true">
-            {activeLabel}
+          <span className="tuner-dial-label">
+            {dial.label}
+            <span className="tuner-dial-changed" aria-hidden="true" />
+          </span>
+          <span className="tuner-dial-actions">
+            <span className={`tuner-dial-readout${changed ? ' is-tuned' : ''}`} aria-hidden="true">
+              {activeLabel}
+            </span>
+            {changed && onReset ? (
+              <button
+                type="button"
+                className="tuner-dial-reset"
+                onClick={onReset}
+                aria-label={`Reset ${dial.label}`}
+                title="Reset to default"
+              >
+                <ResetIcon />
+              </button>
+            ) : null}
           </span>
         </div>
-        <div
-          className="tuner-chips"
-          role="radiogroup"
-          aria-label={dial.label}
-        >
+        <div className="tuner-chips" role="radiogroup" aria-label={dial.label}>
           {dial.options.map((option) => (
             <button
               key={option.value}
@@ -89,25 +139,42 @@ export function TunerDial({ dial, value, onChange, onCommit }: TunerDialProps) {
                 onChange(option.value)
                 if (onCommit) onCommit(option.value)
               }}
-              data-hover="interactive"
             >
               {option.label}
             </button>
           ))}
         </div>
+        <span className="tuner-dial-hint" aria-hidden="true">
+          <kbd>↵</kbd> next option
+        </span>
       </div>
     )
   }
 
   // Toggle
   const isOn = String(value) === 'on'
-  const tuned = (isOn ? 'on' : 'off') !== dial.default
   return (
-    <div className="tuner-dial">
+    <div className={dialCls}>
       <div className="tuner-dial-header">
-        <span className="tuner-dial-label">{dial.label}</span>
-        <span className={`tuner-dial-readout${tuned ? ' is-tuned' : ''}`} aria-hidden="true">
-          {isOn ? 'On' : 'Off'}
+        <span className="tuner-dial-label">
+          {dial.label}
+          <span className="tuner-dial-changed" aria-hidden="true" />
+        </span>
+        <span className="tuner-dial-actions">
+          <span className={`tuner-dial-readout${changed ? ' is-tuned' : ''}`} aria-hidden="true">
+            {isOn ? 'On' : 'Off'}
+          </span>
+          {changed && onReset ? (
+            <button
+              type="button"
+              className="tuner-dial-reset"
+              onClick={onReset}
+              aria-label={`Reset ${dial.label}`}
+              title="Reset to default"
+            >
+              <ResetIcon />
+            </button>
+          ) : null}
         </span>
       </div>
       <button
@@ -121,7 +188,6 @@ export function TunerDial({ dial, value, onChange, onCommit }: TunerDialProps) {
           onChange(next)
           if (onCommit) onCommit(next)
         }}
-        data-hover="interactive"
       >
         <span className="tuner-toggle-track">
           <span className="tuner-toggle-knob" />

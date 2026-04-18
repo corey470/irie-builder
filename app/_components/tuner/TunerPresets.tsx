@@ -21,9 +21,8 @@ export function TunerPresets({ presets, onApply }: TunerPresetsProps) {
           onClick={() => {
             setFlashing(preset.id)
             onApply(preset)
-            window.setTimeout(() => setFlashing(null), 320)
+            window.setTimeout(() => setFlashing(null), 200)
           }}
-          data-hover="interactive"
         >
           {preset.label}
         </button>
