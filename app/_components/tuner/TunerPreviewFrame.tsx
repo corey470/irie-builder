@@ -36,7 +36,7 @@ export const TunerPreviewFrame = forwardRef<HTMLIFrameElement, TunerPreviewFrame
               ref={ref}
               title="Tuner preview"
               className="tuner-frame"
-              sandbox="allow-same-origin"
+              sandbox="allow-same-origin allow-scripts"
               srcDoc={html}
               onLoad={onLoad}
             />

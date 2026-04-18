@@ -1209,7 +1209,7 @@ function PreviewFrame({
   title: string
   className: string
 }) {
-  return <iframe title={title} className={className} sandbox="allow-same-origin" srcDoc={html || ''} />
+  return <iframe title={title} className={className} sandbox="allow-same-origin allow-scripts" srcDoc={html || ''} />
 }
 
 class BuilderErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -1431,7 +1431,7 @@ function FullscreenPreviewOverlay({
       <iframe
         title={title}
         className="platform-fullscreen-frame"
-        sandbox="allow-same-origin"
+        sandbox="allow-same-origin allow-scripts"
         srcDoc={html}
       />
     </div>
@@ -3431,7 +3431,7 @@ export function EditorPage() {
                   ref={iframeRef}
                   title="Editable preview"
                   className="platform-preview-frame platform-preview-frame--editor"
-                  sandbox="allow-same-origin"
+                  sandbox="allow-same-origin allow-scripts"
                   srcDoc={editorModel.frameHtml}
                   onLoad={syncComputedStylesFromFrame}
                 />
