@@ -539,7 +539,11 @@ function downloadHtml(html: string, name: string) {
   anchor.href = url
   anchor.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'irie-page'}.html`
   anchor.click()
-  URL.revokeObjectURL(url)
+  // On slow machines, revoking synchronously races the browser's download
+  // kickoff — the blob is torn down before the download actually starts.
+  // Delay the revoke to the next macrotask cycle so click() has time to
+  // register with the download manager.
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function buildGenerationLabel(nextCount: number, sectionFocus: string, revisionDirective: string): string {
@@ -548,8 +552,16 @@ function buildGenerationLabel(nextCount: number, sectionFocus: string, revisionD
   return `Generation #${nextCount}`
 }
 
-function humanizeAgentLabel(name: string): string {
-  return name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+const warnedUnknownAgents = new Set<string>()
+function warnOnceUnknownAgents(names: string[]): void {
+  for (const name of names) {
+    if (warnedUnknownAgents.has(name)) continue
+    warnedUnknownAgents.add(name)
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[builder] unknown agent name from stream: ${name} (not in AGENT_ROSTER)`,
+    )
+  }
 }
 
 function stateLabel(state: AgentState): string {
@@ -606,6 +618,32 @@ function hasBriefContent(brief: BriefState): boolean {
     brief.vibeText.trim() ||
     brief.styleBlend.trim()
   )
+}
+
+/**
+ * Turn "https://www.iriethreads.com/path" into "Iriethreads" so the clone
+ * flow (where the user only pastes a URL and hits "Clone with my brand")
+ * ships a non-empty brandName to the agents. Falls back to empty when the
+ * URL can't be parsed — caller keeps the old blank-string behavior.
+ */
+function deriveBrandNameFromClone(brief: BriefState): string {
+  const url = brief.cloneUrl?.trim()
+  if (!url) return ''
+  let hostname = ''
+  try {
+    hostname = new URL(url).hostname
+  } catch {
+    // Accept bare domains like "iriethreads.com"
+    const stripped = url.replace(/^https?:\/\//i, '').replace(/^\/\//, '')
+    hostname = stripped.split('/')[0] ?? ''
+  }
+  if (!hostname) return ''
+  // Strip www. and everything from the last dot onward (TLD).
+  const noWww = hostname.replace(/^www\./i, '')
+  const core = noWww.split('.')[0] ?? ''
+  if (!core) return ''
+  // Title-case the first letter so it reads like a brand name.
+  return core.charAt(0).toUpperCase() + core.slice(1)
 }
 
 function summarizeChange(previous: GenerationSnapshot | null, current: GenerationSnapshot | null) {
@@ -1717,7 +1755,7 @@ export function BriefPage() {
     }))
   }
 
-  function queueBuild() {
+  async function queueBuild() {
     if (!hasBriefContent(brief)) return
     const request: PendingGenerationRequest = {
       id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pending-${Date.now()}`,
@@ -1726,6 +1764,34 @@ export function BriefPage() {
     }
     writeStorage(BRIEF_STORAGE_KEY, brief)
     writeStorage(PENDING_GENERATION_STORAGE_KEY, request)
+
+    // Flush the brief to Supabase *before* navigation. Without this, the
+    // debounced autosave in attachSupabaseSync hasn't fired yet, so when
+    // /generate mounts and hydrates from Supabase it reads a stale brief
+    // and overwrites the fresh one we just wrote. Best-effort: if the
+    // user isn't signed in or the flush fails, we still proceed — the
+    // local write is authoritative for anonymous sessions.
+    try {
+      const supabase = createSupabaseBrowserClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: project } = await supabase
+          .from('builder_projects')
+          .select('id')
+          .eq('owner_id', user.id)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (project) {
+          const { flushBriefSync } = await import('@/lib/persistence/sync')
+          await flushBriefSync(supabase, user.id, project.id)
+        }
+      }
+    } catch {
+      // Network / cookie read errors fall through — local state is still
+      // the authoritative source for the /generate hydrate.
+    }
+
     router.push('/generate')
   }
 
@@ -2014,7 +2080,7 @@ export function BriefPage() {
               {brief.cloneAnalysis ? (
                 <div className="platform-clone-result">
                   <p>{summarizeCloneAnalysis(brief.cloneAnalysis)}</p>
-                  <button type="button" className="platform-primary-btn" onClick={queueBuild}>
+                  <button type="button" className="platform-primary-btn" onClick={() => { void queueBuild() }}>
                     Clone with my brand →
                   </button>
                 </div>
@@ -2023,7 +2089,7 @@ export function BriefPage() {
           </AccordionCard>
 
           <section className="platform-build-card platform-build-card--sticky">
-            <button type="button" className="platform-primary-btn platform-primary-btn--wide" onClick={queueBuild} disabled={!canBuild}>
+            <button type="button" className="platform-primary-btn platform-primary-btn--wide" onClick={() => { void queueBuild() }} disabled={!canBuild}>
               Build It →
             </button>
             <button type="button" className="platform-text-link" onClick={openConversation}>
@@ -2177,7 +2243,12 @@ export function GeneratePage() {
 
   async function generateSite(revisionOverride?: string) {
     const answers = brief.answers
-    const brandName = answers[0] || ''
+    // Clone-only flows leave answers[] empty — derive a reasonable brand
+    // name from the cloneUrl so downstream agents don't receive a blank
+    // string. We only backfill brandName; everything else stays empty
+    // and rawBrief (which already includes the clone context) carries
+    // the signal.
+    const brandName = answers[0] || deriveBrandNameFromClone(brief) || ''
     const vibe = answers[1] || ''
     const audience = answers[2] || ''
     const headline = answers[3] || ''
@@ -2330,21 +2401,20 @@ export function GeneratePage() {
   }
 
   const knownAgents = new Set<string>(AGENT_ROSTER.map(agent => agent.name))
-  const additionalAgents = Object.entries(agentStatus).filter(([name]) => !knownAgents.has(name))
-  const agentRows = [
-    ...AGENT_ROSTER.map(agent => ({
-      key: agent.name,
-      label: agent.label,
-      description: agent.description,
-      state: agentStatus[agent.name] || 'waiting',
-    })),
-    ...additionalAgents.map(([name, state]) => ({
-      key: name,
-      label: humanizeAgentLabel(name),
-      description: 'Additional collaborator',
-      state,
-    })),
-  ]
+  // Drop any agent names the server streams that aren't in the UI roster.
+  // Rendering unknown names raw is ugly ("creative-director-v2-beta"
+  // shows up verbatim); warn once so drift is visible in dev without
+  // spamming the console on every render.
+  const unknownAgentNames = Object.keys(agentStatus).filter(name => !knownAgents.has(name))
+  if (unknownAgentNames.length > 0) {
+    warnOnceUnknownAgents(unknownAgentNames)
+  }
+  const agentRows = AGENT_ROSTER.map(agent => ({
+    key: agent.name,
+    label: agent.label,
+    description: agent.description,
+    state: agentStatus[agent.name] || 'waiting',
+  }))
 
   const currentSnapshot = currentGeneration
   const changeSummary = summarizeChange(previousGeneration, currentSnapshot)

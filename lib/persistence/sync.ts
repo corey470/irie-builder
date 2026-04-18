@@ -170,3 +170,40 @@ export function attachSupabaseSync(
 export function primeGenerationGuard(createdAt: string | null): string | null {
   return createdAt
 }
+
+/**
+ * Synchronously push the current BRIEF_KEY localStorage value to Supabase,
+ * bypassing the 800ms debounce. Called right before we `router.push` into
+ * the generate flow — otherwise the next page's hydrate could read a
+ * stale brief_json (because the debounce hadn't fired yet) and clobber
+ * the local value the user just queued.
+ *
+ * Safe to call without an authed user; it bails early. Logs on failure
+ * but never throws — build flow must proceed regardless.
+ */
+export async function flushBriefSync(
+  supabase: Supabase,
+  userId: string,
+  projectId: string,
+): Promise<void> {
+  if (typeof window === 'undefined') return
+  const raw = window.localStorage.getItem(BRIEF_KEY)
+  if (!raw) return
+  let brief: Record<string, unknown> | null
+  try {
+    brief = JSON.parse(raw) as Record<string, unknown>
+  } catch {
+    return
+  }
+  if (!brief) return
+  const { error } = await supabase
+    .from('builder_projects')
+    .update({ brief_json: brief as never })
+    .eq('id', projectId)
+    .eq('owner_id', userId)
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error('[persistence] flushBriefSync failed', error)
+    emitPersistenceStatus('offline', 'Offline — changes stored locally')
+  }
+}
