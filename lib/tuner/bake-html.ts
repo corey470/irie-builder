@@ -146,6 +146,15 @@ export function tunerChromeCss(): string {
 [data-irie-section-id][data-irie-tuner-hover]::before,
 [data-irie-section-id][data-irie-tuner-active]::before {
   content: attr(data-irie-section-label);
+  /* Reset inset/width/height BEFORE re-specifying top/left so sections
+   * that already declare a full-bleed ::before (the assembler paints
+   * .cta-section::before { inset: 0 } for its radial gradient overlay)
+   * don't leak right:0 / bottom:0 into our label badge and turn it into
+   * a solid gold fill covering the whole section. This is Bug A on
+   * Corey's walk: CTA section went opaque gold on hover. */
+  inset: auto;
+  width: auto;
+  height: auto;
   position: absolute;
   top: -22px;
   left: 0;

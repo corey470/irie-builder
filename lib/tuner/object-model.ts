@@ -164,8 +164,16 @@ export function annotateObjects(doc: Document): ObjectInventory {
     })
   })
 
+  // Bug B fix: the assembler's footer uses <span> wrappers for "© 2026 Brand"
+  // and "Playfair · Syne", which the original selector (h1-h4, p, button, a)
+  // never caught — so clicking footer text did nothing. Widen the selector
+  // to include inline text wrappers (span, small, em, strong, li) and guard
+  // against double-annotation by skipping any element that sits inside an
+  // already-annotated parent, a marquee strip, or an image container.
   const textNodes = Array.from(
-    doc.querySelectorAll<HTMLElement>('h1, h2, h3, h4, p, button, a'),
+    doc.querySelectorAll<HTMLElement>(
+      'h1, h2, h3, h4, p, button, a, span, small, em, strong, li',
+    ),
   )
   textNodes.forEach((node, idx) => {
     // Skip empty text nodes, nav wrappers, and anything inside a button
@@ -175,6 +183,25 @@ export function annotateObjects(doc: Document): ObjectInventory {
     const tagName = node.tagName.toLowerCase()
     // Skip anchors that are actually image wrappers.
     if (tagName === 'a' && node.querySelector('img')) return
+
+    // Skip inline wrappers whose text is already covered by an annotated
+    // parent element. A <span> inside <p>, <h1>, <button>, etc. should NOT
+    // become its own editable object — editing the outer parent is what
+    // the user expects.
+    if (tagName === 'span' || tagName === 'small' || tagName === 'em' ||
+        tagName === 'strong' || tagName === 'li') {
+      const parent = node.parentElement
+      if (parent?.closest('h1, h2, h3, h4, p, button, a, [data-irie-edit-id]')) {
+        return
+      }
+      // Skip any span inside a marquee strip — marquee words are handled by
+      // the marquee object mode, not per-word text edit.
+      if (node.closest('.marquee, .marquee-track, [data-irie-marquee-id]')) {
+        return
+      }
+      // Must be inside a section to be addressable by section-scoped dials.
+      if (!node.closest('[data-irie-section-id]')) return
+    }
 
     const existing = node.getAttribute('data-irie-edit-id')
     const id = existing || `text-${idx + 1}`
