@@ -58,6 +58,13 @@ export default function SignupPage() {
       )
       return
     }
+    // Supabase returns a user with identities: [] when the email is already
+    // registered but email-confirmations are enabled — do NOT show the
+    // "check your email" screen in that case, it's misleading.
+    if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      setError('An account with that email already exists. Try signing in?')
+      return
+    }
     // If a session was returned, email confirmation is OFF — go straight to dashboard.
     if (data.session) {
       router.push('/dashboard')

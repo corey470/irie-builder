@@ -18,10 +18,13 @@ export default function ResetPasswordPage() {
   const [status, setStatus] = useState<BootstrapStatus>('checking')
 
   // On mount: establish a recovery session from whichever format Supabase used
-  // in the email link. Three possibilities:
+  // in the email link. Two possibilities:
   //  1. PKCE:     ?code=...           → exchangeCodeForSession
   //  2. Implicit: #access_token=...   → setSession from hash params
-  //  3. Session already present       → proceed directly
+  //
+  // A pre-existing session alone is NOT sufficient — otherwise anyone who
+  // bookmarks this page could change their password without the email round-
+  // trip. We require real proof of recovery intent (code or recovery hash).
   useEffect(() => {
     const supabase = createClient()
 
@@ -64,10 +67,9 @@ export default function ResetPasswordPage() {
         }
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      setStatus(user ? 'ready' : 'invalid')
+      // No recovery code and no recovery hash — do not consume whatever
+      // session might already be in the browser as proof of intent.
+      setStatus('invalid')
     }
 
     bootstrap().catch(() => setStatus('invalid'))
@@ -111,8 +113,8 @@ export default function ResetPasswordPage() {
     return (
       <AuthShell
         eyebrow="Link expired"
-        title="This link no longer works."
-        subtitle="Reset links are good for about an hour."
+        title="This link is no longer valid."
+        subtitle="Request a new reset email to continue."
       >
         <div className="auth-links">
           <Link href="/forgot-password" className="auth-link">

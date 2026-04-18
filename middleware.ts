@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
+import { safeRedirectPath } from '@/lib/auth/safe-redirect'
 
 /**
  * Auth boundary.
@@ -36,20 +37,6 @@ function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
   )
-}
-
-/**
- * Validate a `redirect` query value before bouncing the user there.
- * Mirrors the client-side check in app/_auth/safeRedirect.ts.
- */
-function safeRedirectPath(input: string | null): string | null {
-  if (!input) return null
-  if (!input.startsWith('/')) return null
-  if (input.startsWith('//') || input.startsWith('/\\') || input.startsWith('/%2f')) return null
-  if (/^\/[a-z]+:/i.test(input)) return null
-  if (input.toLowerCase().includes('javascript:')) return null
-  if (input.length > 512) return null
-  return input
 }
 
 export async function middleware(request: NextRequest) {

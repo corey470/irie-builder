@@ -1765,7 +1765,14 @@ export function TunerEditor() {
         label: 'Sign out',
         group: 'Account',
         run: () => {
-          window.location.href = '/logout'
+          // /logout is POST-only (CSRF hardening) — submit a hidden form
+          // rather than navigating via GET.
+          if (typeof document === 'undefined') return
+          const form = document.createElement('form')
+          form.method = 'POST'
+          form.action = '/logout'
+          document.body.appendChild(form)
+          form.submit()
         },
       },
     )
