@@ -16,6 +16,8 @@ interface TunerPanelProps {
   onRevertSection?: () => void
   onRevertAll?: () => void
   panelKey: string
+  /** Optional extra UI rendered at the right of the header (mode chips). */
+  extraHeader?: React.ReactNode
 }
 
 function SectionBadgeIcon({ type }: { type: SectionType }) {
@@ -60,6 +62,7 @@ export function TunerPanel({
   onRevertSection,
   onRevertAll,
   panelKey,
+  extraHeader,
 }: TunerPanelProps) {
   if (!section || !group) {
     return (
@@ -87,6 +90,7 @@ export function TunerPanel({
           {sectionTypeLabel}
         </span>
         <h2 className="tuner-right-title">{section.label}</h2>
+        {extraHeader}
       </header>
 
       <div className="tuner-right-body">

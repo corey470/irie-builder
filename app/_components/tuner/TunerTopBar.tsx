@@ -27,6 +27,12 @@ export interface TunerTopBarProps {
   onDownload: () => void
   onExport: () => void
   onCopyCode?: () => void
+  /** Tuner v2: fullscreen toggle callback. */
+  onToggleFullscreen?: () => void
+  /** Tuner v2: current accent value (for visual indicator). */
+  accent?: string
+  /** Tuner v2: rendered accent popover slot (component + state). */
+  accentPopover?: React.ReactNode
 }
 
 /* Tiny inline icons. No icon library. 14×14 viewbox, 1.4 stroke. */
@@ -132,6 +138,8 @@ export function TunerTopBar(props: TunerTopBarProps) {
     onDownload,
     onExport,
     onCopyCode,
+    onToggleFullscreen,
+    accentPopover,
   } = props
 
   const [exportOpen, setExportOpen] = useState(false)
@@ -307,6 +315,30 @@ export function TunerTopBar(props: TunerTopBarProps) {
         >
           <Icon.Share />
         </button>
+
+        {onToggleFullscreen ? (
+          <button
+            type="button"
+            className="tuner-icon-btn"
+            onClick={onToggleFullscreen}
+            aria-label="Fullscreen preview"
+            title="Fullscreen preview"
+          >
+            <svg
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 5V2h3M12 5V2H9M2 9v3h3M12 9v3H9" />
+            </svg>
+          </button>
+        ) : null}
+
+        {accentPopover}
 
         <div className="tuner-dropdown" ref={exportRef}>
           <button

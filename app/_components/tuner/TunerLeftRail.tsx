@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import type { ClassifiedSection, SectionType } from '@/lib/tuner/types'
+import type { ImageObject, TextObject } from '@/lib/tuner/object-model'
+import type { SelectionMode } from './TunerEditor'
 
 export interface SectionMeta {
   /** Number of editable elements per section (texts/images). Optional. */
@@ -17,6 +19,15 @@ interface TunerLeftRailProps {
   activeId: string | null
   onSelect: (sectionId: string) => void
   meta?: Record<string, SectionMeta>
+  /** Tuner v2: sections currently expanded to reveal child object list. */
+  expanded?: Set<string>
+  onToggleExpand?: (sectionId: string) => void
+  textsBySection?: TextObject[]
+  imagesBySection?: ImageObject[]
+  selectedObjectId?: string | null
+  selectionMode?: SelectionMode
+  onSelectText?: (id: string) => void
+  onSelectImage?: (id: string) => void
 }
 
 /* Inline icons. No icon library. */
@@ -108,6 +119,55 @@ function SectionIcon({ type }: { type: SectionType }) {
   }
 }
 
+function ChevronIcon() {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M5.5 3.5L9 7l-3.5 3.5" />
+    </svg>
+  )
+}
+
+function TextIcon() {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3.5 3.5h7M7 3.5v7" />
+    </svg>
+  )
+}
+function ImageIcon() {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="1.5" y="2.5" width="11" height="9" rx="0.5" />
+      <circle cx="5" cy="6" r="0.9" />
+      <path d="M2 10l3-2.5 3 2L11 7l1.5 1" />
+    </svg>
+  )
+}
+
 function relTime(ms?: number): string {
   if (!ms) return ''
   const diff = Date.now() - ms
@@ -117,8 +177,22 @@ function relTime(ms?: number): string {
   return `${Math.floor(diff / 86_400_000)}d`
 }
 
-export function TunerLeftRail({ sections, activeId, onSelect, meta }: TunerLeftRailProps) {
+export function TunerLeftRail({
+  sections,
+  activeId,
+  onSelect,
+  meta,
+  expanded,
+  onToggleExpand,
+  textsBySection,
+  imagesBySection,
+  selectedObjectId,
+  selectionMode,
+  onSelectText,
+  onSelectImage,
+}: TunerLeftRailProps) {
   const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<'all' | 'text' | 'image'>('all')
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -153,49 +227,139 @@ export function TunerLeftRail({ sections, activeId, onSelect, meta }: TunerLeftR
         {filtered.map((section, idx) => {
           const m = meta?.[section.sectionId] ?? {}
           const counts = m.counts
-          const countLabel = counts
-            ? `${counts.texts ?? 0}t · ${counts.images ?? 0}i`
-            : ''
           const time = relTime(m.lastEditedAt)
           const dirty = m.dirty
+          const isExpanded = expanded?.has(section.sectionId) ?? false
           const cls = [
             'tuner-section-row',
             activeId === section.sectionId ? 'is-active' : '',
             dirty ? 'is-dirty' : '',
+            isExpanded ? 'is-expanded' : '',
           ]
             .filter(Boolean)
             .join(' ')
+          const sectionTexts = textsBySection?.filter((t) => t.sectionId === section.sectionId) ?? []
+          const sectionImages = imagesBySection?.filter((i) => i.sectionId === section.sectionId) ?? []
           return (
             <li key={section.sectionId}>
-              <button
-                type="button"
+              <div
                 className={cls}
                 onClick={() => onSelect(section.sectionId)}
+                role="button"
+                tabIndex={0}
                 aria-current={activeId === section.sectionId ? 'true' : undefined}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelect(section.sectionId)
+                  }
+                }}
                 title={
                   idx < 9
                     ? `${section.label} · press ${idx + 1}`
                     : section.label
                 }
               >
+                {onToggleExpand ? (
+                  <button
+                    type="button"
+                    className="tuner-section-expand"
+                    aria-label={isExpanded ? 'Collapse section' : 'Expand section'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleExpand(section.sectionId)
+                    }}
+                    tabIndex={-1}
+                  >
+                    <ChevronIcon />
+                  </button>
+                ) : null}
                 <span className="tuner-section-icon">
                   <SectionIcon type={section.sectionType} />
                 </span>
                 <span className="tuner-section-label">{section.label}</span>
-                {(countLabel || time) ? (
+                {(counts || time) ? (
                   <span className="tuner-section-meta">
-                    {countLabel ? <span className="tuner-section-count">{countLabel}</span> : null}
+                    {counts ? (
+                      <span className="tuner-section-count">
+                        <button
+                          type="button"
+                          className="tuner-section-count-chip"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFilter('text')
+                            onToggleExpand?.(section.sectionId)
+                          }}
+                          title={`${counts.texts ?? 0} text objects`}
+                        >
+                          {counts.texts ?? 0}t
+                        </button>
+                        <span aria-hidden="true"> · </span>
+                        <button
+                          type="button"
+                          className="tuner-section-count-chip"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFilter('image')
+                            onToggleExpand?.(section.sectionId)
+                          }}
+                          title={`${counts.images ?? 0} image objects`}
+                        >
+                          {counts.images ?? 0}i
+                        </button>
+                      </span>
+                    ) : null}
                     {time ? <span className="tuner-section-time">{time}</span> : null}
                   </span>
                 ) : null}
                 <span className="tuner-section-dot" aria-hidden="true" />
-              </button>
+              </div>
+              {isExpanded ? (
+                <ul className="tuner-section-children">
+                  {(filter === 'all' || filter === 'text') &&
+                    sectionTexts.map((t) => {
+                      const active =
+                        selectionMode === 'text' && selectedObjectId === t.id
+                      return (
+                        <li key={t.id}>
+                          <button
+                            type="button"
+                            className={`tuner-section-child${active ? ' is-active' : ''}`}
+                            onClick={() => onSelectText?.(t.id)}
+                            title={t.text}
+                          >
+                            <TextIcon />
+                            <span>{t.label}</span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  {(filter === 'all' || filter === 'image') &&
+                    sectionImages.map((i) => {
+                      const active =
+                        selectionMode === 'image' && selectedObjectId === i.id
+                      return (
+                        <li key={i.id}>
+                          <button
+                            type="button"
+                            className={`tuner-section-child${active ? ' is-active' : ''}`}
+                            onClick={() => onSelectImage?.(i.id)}
+                            title={i.alt || i.src}
+                          >
+                            <ImageIcon />
+                            <span>{i.label}</span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                </ul>
+              ) : null}
             </li>
           )
         })}
       </ul>
       <div className="tuner-left-shortcuts" aria-hidden="true">
-        <kbd>1</kbd>–<kbd>9</kbd> jump · <kbd>[</kbd> <kbd>]</kbd> nav
+        <kbd>1</kbd>–<kbd>9</kbd> jump · <kbd>[</kbd> <kbd>]</kbd> nav · <kbd>S</kbd> style
       </div>
     </aside>
   )
