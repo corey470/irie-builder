@@ -108,6 +108,61 @@ export function tunerRuntimeCss(): string {
 `.trim()
 }
 
+export const TUNER_CHROME_STYLE_ID = 'irie-tuner-chrome'
+
+/**
+ * Chrome-only CSS — selection rings + hover labels visible inside the iframe
+ * during editing. NEVER baked into final_html (the user's exported page must
+ * not carry editor decoration). TunerEditor injects this on iframe load and
+ * removes it before any export operation.
+ */
+export function tunerChromeCss(): string {
+  return `
+[data-irie-section-id] { position: relative; }
+[data-irie-section-id][data-irie-tuner-hover]::after,
+[data-irie-section-id][data-irie-tuner-active]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+[data-irie-section-id][data-irie-tuner-hover]:not([data-irie-tuner-active])::after {
+  outline: 1px solid rgba(201, 168, 76, 0.4);
+  outline-offset: -1px;
+}
+[data-irie-section-id][data-irie-tuner-active]::after {
+  outline: 2px solid #c9a84c;
+  outline-offset: -2px;
+}
+[data-irie-section-id][data-irie-tuner-flash]::after {
+  animation: irieTunerRingFlash 600ms ease;
+}
+@keyframes irieTunerRingFlash {
+  0%   { outline-color: rgba(201, 168, 76, 1); outline-width: 4px; }
+  60%  { outline-color: rgba(201, 168, 76, 1); outline-width: 3px; }
+  100% { outline-color: rgba(201, 168, 76, 1); outline-width: 2px; }
+}
+[data-irie-section-id][data-irie-tuner-hover]::before,
+[data-irie-section-id][data-irie-tuner-active]::before {
+  content: attr(data-irie-section-label);
+  position: absolute;
+  top: -22px;
+  left: 0;
+  z-index: 2147483647;
+  font: 500 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0a0a0a;
+  background: #c9a84c;
+  padding: 4px 6px;
+  border-radius: 3px 3px 3px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+`.trim()
+}
+
 function escapeAttr(value: string): string {
   return value.replace(/"/g, '\\"')
 }
@@ -154,8 +209,9 @@ export function bakeTunerState(
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
 
-  doc.querySelectorAll(`#${TUNER_RUNTIME_STYLE_ID}, #${TUNER_BAKED_STYLE_ID}`)
-    .forEach((node) => node.remove())
+  doc.querySelectorAll(
+    `#${TUNER_RUNTIME_STYLE_ID}, #${TUNER_BAKED_STYLE_ID}, #${TUNER_CHROME_STYLE_ID}`,
+  ).forEach((node) => node.remove())
 
   const runtime = doc.createElement('style')
   runtime.id = TUNER_RUNTIME_STYLE_ID
