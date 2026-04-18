@@ -83,8 +83,11 @@ export function attachSupabaseSync(
     )
     if (!snapshot?.html) return
     const createdAt = snapshot.createdAt ?? new Date().toISOString()
+    // Guard reflects server state only: compare to the last *successfully
+    // synced* createdAt. Do NOT pre-set the guard to the candidate before
+    // the INSERT lands — a crash between set and insert used to null the
+    // guard out, which let a retry duplicate the row.
     if (lastSyncedGenAt === createdAt) return
-    lastSyncedGenAt = createdAt
 
     const briefJson =
       safeParseJSON<Record<string, unknown>>(
@@ -113,10 +116,13 @@ export function attachSupabaseSync(
     if (insertError || !gen) {
       // eslint-disable-next-line no-console
       console.error('[persistence] generation sync failed', insertError)
-      lastSyncedGenAt = null
+      // Leave lastSyncedGenAt untouched — on retry, we want to re-attempt
+      // this same snapshot, not mint a duplicate.
       emitPersistenceStatus('offline', 'Offline — changes stored locally')
       return
     }
+    // Only now do we mark this createdAt as "on the server."
+    lastSyncedGenAt = createdAt
     await supabase
       .from('builder_projects')
       .update({ current_generation_id: gen.id })

@@ -24,8 +24,12 @@ export async function hydrateLocalStorage(
   const briefJson = project.brief_json ?? {}
   window.localStorage.setItem(BRIEF_KEY, JSON.stringify(briefJson))
 
-  // Latest completed generation
-  const { data: latestGen } = await supabase
+  // Latest completed generation. If Supabase errors, THROW — the caller
+  // (PersistenceGate) will catch and fall back to anonymous/offline mode.
+  // Do NOT clear LAST_GENERATION_KEY on a transient DB error; that would
+  // silently wipe the user's work. We only remove it when we definitively
+  // know no generation exists (no error AND no data).
+  const { data: latestGen, error: latestGenError } = await supabase
     .from('builder_generations')
     .select('*')
     .eq('project_id', project.id)
@@ -33,6 +37,12 @@ export async function hydrateLocalStorage(
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
+
+  if (latestGenError) {
+    throw new Error(
+      `hydrate: failed to load latest generation (${latestGenError.message})`,
+    )
+  }
 
   if (latestGen && latestGen.final_html) {
     const agentOutputs = (latestGen.agent_outputs_json ?? {}) as {
@@ -57,12 +67,18 @@ export async function hydrateLocalStorage(
   }
 
   // Pass history (derived from completed generations, chronological)
-  const { data: allComplete } = await supabase
+  const { data: allComplete, error: historyError } = await supabase
     .from('builder_generations')
     .select('agent_outputs_json, created_at')
     .eq('project_id', project.id)
     .eq('status', 'complete')
     .order('created_at', { ascending: true })
+
+  if (historyError) {
+    throw new Error(
+      `hydrate: failed to load generation history (${historyError.message})`,
+    )
+  }
 
   const history = (allComplete ?? []).map((g, i) => {
     const outputs = (g.agent_outputs_json ?? {}) as {

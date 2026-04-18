@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/types/supabase'
+import { emitPersistenceStatus } from './status'
 
 type Supabase = SupabaseClient<Database>
 
@@ -190,6 +191,12 @@ export async function logEdits(
     // eslint-disable-next-line no-console
     console.error('[edit-log] builder_generations update failed', updateError)
   }
+  // Either failure means the user's edit didn't actually persist — raise
+  // the persistence status so the UI can surface it. Fire-and-forget
+  // semantics (no throw) are preserved.
+  if (insertError || updateError) {
+    emitPersistenceStatus('error', 'Save failed — reconnect and try again')
+  }
 }
 
 /**
@@ -208,5 +215,6 @@ export async function logPublish(
   if (error) {
     // eslint-disable-next-line no-console
     console.error('[edit-log] builder_publishes insert failed', error)
+    emitPersistenceStatus('error', 'Save failed — reconnect and try again')
   }
 }
