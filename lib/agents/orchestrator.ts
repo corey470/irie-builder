@@ -395,10 +395,14 @@ const MOTION_CSS = `<style id="irie-motion-system">
 #cursor{width:8px;height:8px;background:#C9A84C;border-radius:50%;position:fixed;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:transform .1s,background .2s;display:none}
 #cursor-ring{width:28px;height:28px;border:1.5px solid #C9A84C;border-radius:50%;position:fixed;pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:width .3s,height .3s,background .3s;display:none}
 @media(prefers-reduced-motion:reduce){.reveal,.reveal-left,.reveal-right,.reveal-scale{opacity:1;transform:none;transition:none}.stagger>*{opacity:1;transform:none;transition:none}.marquee-track{animation:none}.orb{animation:none}.grain::after{animation:none}}
+/* Fallback for sandboxed iframes where scripts are blocked (e.g. /generate preview panels using sandbox="allow-same-origin" with no allow-scripts). Without JS the IntersectionObserver never adds .visible, so every .reveal stays at opacity:0 and the page looks empty. The <html class="no-js"> attribute is removed by MOTION_JS on load, so downloaded pages still animate normally. */
+html.no-js .reveal,html.no-js .reveal-left,html.no-js .reveal-right,html.no-js .reveal-scale{opacity:1!important;transform:none!important;transition:none!important}
+html.no-js .stagger>*{opacity:1!important;transform:none!important;transition:none!important}
 </style>`
 
 const MOTION_JS = `<script id="irie-motion-js">
 (function(){
+document.documentElement.classList.remove('no-js');
 var dot=document.createElement('div');dot.id='cursor';
 var ring=document.createElement('div');ring.id='cursor-ring';
 document.body.appendChild(dot);document.body.appendChild(ring);
@@ -447,6 +451,17 @@ function postProcessHtml(html: string): string {
         return match.replace(/class="([^"]*)"/, 'class="$1 grain"')
       }
       return `<body${attrs} class="grain">`
+    })
+  }
+  // Add <html class="no-js"> so sandboxed iframes (which can't run scripts)
+  // still render content. MOTION_JS removes this class on load in the
+  // downloaded page so entrance animations still work there.
+  if (/<html\b/.test(html) && !/<html[^>]*class=["'][^"']*\bno-js\b/.test(html)) {
+    html = html.replace(/<html\b([^>]*)>/i, (match, attrs) => {
+      if (/class=["']/.test(attrs)) {
+        return match.replace(/class=(["'])([^"']*)\1/, (_m, quote, classes) => `class=${quote}${classes} no-js${quote}`)
+      }
+      return `<html${attrs} class="no-js">`
     })
   }
   return html
