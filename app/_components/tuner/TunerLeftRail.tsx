@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ClassifiedSection, SectionType } from '@/lib/tuner/types'
 import type { ImageObject, TextObject } from '@/lib/tuner/object-model'
 import type { SelectionMode } from './TunerEditor'
@@ -193,6 +193,24 @@ export function TunerLeftRail({
 }: TunerLeftRailProps) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | 'text' | 'image'>('all')
+  const listRef = useRef<HTMLUListElement>(null)
+
+  // When the preview click (or any other path) changes the active section,
+  // snap the matching sidebar row into view and auto-expand it so its text
+  // / image children are immediately reachable. scrollIntoView with block:
+  // 'nearest' avoids jumping when the row is already visible.
+  useEffect(() => {
+    if (!activeId) return
+    const row = listRef.current?.querySelector<HTMLElement>(
+      `[data-section-id="${CSS.escape(activeId)}"]`,
+    )
+    if (row) {
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    }
+    if (expanded && !expanded.has(activeId) && onToggleExpand) {
+      onToggleExpand(activeId)
+    }
+  }, [activeId, expanded, onToggleExpand])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -223,7 +241,7 @@ export function TunerLeftRail({
           aria-label="Filter sections"
         />
       </div>
-      <ul className="tuner-section-list">
+      <ul className="tuner-section-list" ref={listRef}>
         {filtered.map((section, idx) => {
           const m = meta?.[section.sectionId] ?? {}
           const counts = m.counts
@@ -244,6 +262,7 @@ export function TunerLeftRail({
             <li key={section.sectionId}>
               <div
                 className={cls}
+                data-section-id={section.sectionId}
                 onClick={() => onSelect(section.sectionId)}
                 role="button"
                 tabIndex={0}
@@ -290,7 +309,8 @@ export function TunerLeftRail({
                             setFilter('text')
                             onToggleExpand?.(section.sectionId)
                           }}
-                          title={`${counts.texts ?? 0} text objects`}
+                          title={`${counts.texts ?? 0} text objects in this section — click to list them`}
+                          aria-label={`${counts.texts ?? 0} text objects — click to list`}
                         >
                           {counts.texts ?? 0}t
                         </button>
@@ -303,7 +323,8 @@ export function TunerLeftRail({
                             setFilter('image')
                             onToggleExpand?.(section.sectionId)
                           }}
-                          title={`${counts.images ?? 0} image objects`}
+                          title={`${counts.images ?? 0} images in this section — click to list them`}
+                          aria-label={`${counts.images ?? 0} images — click to list`}
                         >
                           {counts.images ?? 0}i
                         </button>
