@@ -634,7 +634,23 @@ export function TunerEditor() {
       const ctx = ctxRef.current
       if (!ctx) return
       const html = bakeCurrentHtml()
-      await logEdits(supabaseRef.current, ctx, [diff], html)
+      // Accent is the only kind that lives in agent_outputs_json.metadata
+      // (picker reads palette.accent on fresh load), so patch it there too.
+      let agentOutputs: Record<string, unknown> | null = null
+      if (diff.kind === 'accent') {
+        const snap = readSnapshot()
+        agentOutputs = {
+          metadata: {
+            ...(snap?.metadata ?? {}),
+            palette: { ...(snap?.metadata?.palette ?? {}), accent: diff.after },
+          },
+          blueprint: snap?.blueprint ?? null,
+          critique: snap?.critique ?? null,
+          decisions: Array.isArray(snap?.decisions) ? snap.decisions : [],
+          label: typeof snap?.label === 'string' ? snap.label : 'Generation',
+        }
+      }
+      await logEdits(supabaseRef.current, ctx, [diff], html, agentOutputs)
     },
     [bakeCurrentHtml],
   )
@@ -1455,11 +1471,13 @@ export function TunerEditor() {
           d.documentElement.style.setProperty('--color-accent', next)
           d.documentElement.style.setProperty('--irie-accent', next)
           setAccent(next)
+          void logObjectEdit({ kind: 'accent', before, after: next })
         },
         revert: (d) => {
           d.documentElement.style.setProperty('--color-accent', before)
           d.documentElement.style.setProperty('--irie-accent', before)
           setAccent(before)
+          void logObjectEdit({ kind: 'accent', before: next, after: before })
         },
       })
       persistSoon()
