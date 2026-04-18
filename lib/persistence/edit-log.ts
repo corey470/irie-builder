@@ -61,7 +61,30 @@ type StyleEdit = {
   before: Record<string, string>
   after: Record<string, string>
 }
-export type EditDiff = TextEdit | ImageEdit | AccentEdit | StyleEdit
+// Tuner v1 additions — freeform within the existing edit_json (Json) column.
+// Zero schema change: builder_edits.edit_json accepts any JSON shape.
+type TunerEdit = {
+  kind: 'tuner'
+  section_id: string
+  section_type: string
+  dial_id: string
+  before: number | string | null
+  after: number | string
+}
+type TunerPresetEdit = {
+  kind: 'tuner-preset'
+  section_id: string
+  section_type: string
+  preset_id: string
+  values: Record<string, number | string>
+}
+export type EditDiff =
+  | TextEdit
+  | ImageEdit
+  | AccentEdit
+  | StyleEdit
+  | TunerEdit
+  | TunerPresetEdit
 
 function summarizeImage(value: string): string {
   if (!value) return '<empty>'
