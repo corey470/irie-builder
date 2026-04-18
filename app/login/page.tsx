@@ -4,12 +4,14 @@ import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { AuthShell } from '@/app/_auth/AuthShell'
+import { PasswordInput } from '@/app/_auth/PasswordInput'
+import { safeRedirect } from '@/app/_auth/safeRedirect'
 import { createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirect = searchParams.get('redirect') || '/dashboard'
+  const redirect = safeRedirect(searchParams.get('redirect'))
   const reset = searchParams.get('reset') === '1'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -35,7 +37,11 @@ function LoginForm() {
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Pick up where you left off.">
+    <AuthShell
+      eyebrow="Pick up where you left off"
+      title="Welcome back"
+      subtitle="Sign in to keep building."
+    >
       <form onSubmit={onSubmit} noValidate>
         {reset && !error ? (
           <div className="auth-success" role="status">
@@ -61,25 +67,19 @@ function LoginForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
-        <div className="auth-field">
-          <label htmlFor="password" className="auth-label">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            className="auth-input"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
+        <PasswordInput
+          id="password"
+          label="Password"
+          value={password}
+          onChange={setPassword}
+          autoComplete="current-password"
+        />
         <button className="auth-submit" type="submit" disabled={loading}>
+          {loading ? <span className="auth-spinner" aria-hidden="true" /> : null}
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
         <div className="auth-links">
-          <Link href="/auth/forgot-password" className="auth-link">
+          <Link href="/forgot-password" className="auth-link">
             Forgot password?
           </Link>
           <span>

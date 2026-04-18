@@ -108,6 +108,77 @@ export function tunerRuntimeCss(): string {
 `.trim()
 }
 
+export const TUNER_CHROME_STYLE_ID = 'irie-tuner-chrome'
+
+/**
+ * Chrome-only CSS — selection rings + hover labels visible inside the iframe
+ * during editing. NEVER baked into final_html (the user's exported page must
+ * not carry editor decoration). TunerEditor injects this on iframe load and
+ * removes it before any export operation.
+ */
+export function tunerChromeCss(): string {
+  return `
+[data-irie-section-id] { position: relative; }
+[data-irie-section-id][data-irie-tuner-hover]::after,
+[data-irie-section-id][data-irie-tuner-active]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+[data-irie-section-id][data-irie-tuner-hover]:not([data-irie-tuner-active])::after {
+  outline: 1px solid rgba(201, 168, 76, 0.4);
+  outline-offset: -1px;
+}
+[data-irie-section-id][data-irie-tuner-active]::after {
+  outline: 2px solid #c9a84c;
+  outline-offset: -2px;
+}
+[data-irie-section-id][data-irie-tuner-flash]::after {
+  animation: irieTunerRingFlash 600ms ease;
+}
+@keyframes irieTunerRingFlash {
+  0%   { outline-color: rgba(201, 168, 76, 1); outline-width: 4px; }
+  60%  { outline-color: rgba(201, 168, 76, 1); outline-width: 3px; }
+  100% { outline-color: rgba(201, 168, 76, 1); outline-width: 2px; }
+}
+[data-irie-section-id][data-irie-tuner-hover]::before,
+[data-irie-section-id][data-irie-tuner-active]::before {
+  content: attr(data-irie-section-label);
+  position: absolute;
+  top: -22px;
+  left: 0;
+  z-index: 2147483647;
+  font: 500 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0a0a0a;
+  background: #c9a84c;
+  padding: 4px 6px;
+  border-radius: 3px 3px 3px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* Object-mode rings — text + image selections layered over section rings. */
+[data-irie-edit-id],
+[data-irie-image-id] {
+  cursor: pointer;
+}
+[data-irie-edit-id].is-irie-object-selected,
+[data-irie-image-id].is-irie-object-selected {
+  outline: 2px solid #c9a84c !important;
+  outline-offset: 4px;
+  border-radius: 1px;
+}
+[data-irie-edit-id].is-irie-object-selected[contenteditable="true"] {
+  outline-style: solid;
+  outline-offset: 6px;
+  caret-color: #c9a84c;
+}
+`.trim()
+}
+
 function escapeAttr(value: string): string {
   return value.replace(/"/g, '\\"')
 }
@@ -154,8 +225,9 @@ export function bakeTunerState(
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
 
-  doc.querySelectorAll(`#${TUNER_RUNTIME_STYLE_ID}, #${TUNER_BAKED_STYLE_ID}`)
-    .forEach((node) => node.remove())
+  doc.querySelectorAll(
+    `#${TUNER_RUNTIME_STYLE_ID}, #${TUNER_BAKED_STYLE_ID}, #${TUNER_CHROME_STYLE_ID}`,
+  ).forEach((node) => node.remove())
 
   const runtime = doc.createElement('style')
   runtime.id = TUNER_RUNTIME_STYLE_ID
@@ -177,4 +249,111 @@ export function bakeTunerState(
   }
 
   return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
+}
+
+/**
+ * Strip editor-only decoration from a cloned Document before exporting:
+ *   - chrome ring CSS (TUNER_CHROME_STYLE_ID)
+ *   - object selection classes
+ *   - contenteditable attributes
+ *   - data-irie-tuner-* hover/active/flash attributes
+ *   - data-irie-section-label (only present during editing)
+ *
+ * Called by both download/copy and persist paths so the final_html in the
+ * DB never carries chrome noise.
+ */
+export function stripEditorChrome(doc: Document): void {
+  doc.getElementById(TUNER_CHROME_STYLE_ID)?.remove()
+  doc.querySelectorAll('.is-irie-object-selected').forEach((node) => {
+    node.classList.remove('is-irie-object-selected')
+  })
+  doc.querySelectorAll('[contenteditable]').forEach((node) => {
+    node.removeAttribute('contenteditable')
+  })
+  doc.querySelectorAll('[data-irie-tuner-hover]').forEach((node) => {
+    node.removeAttribute('data-irie-tuner-hover')
+  })
+  doc.querySelectorAll('[data-irie-tuner-active]').forEach((node) => {
+    node.removeAttribute('data-irie-tuner-active')
+  })
+  doc.querySelectorAll('[data-irie-tuner-flash]').forEach((node) => {
+    node.removeAttribute('data-irie-tuner-flash')
+  })
+  doc.querySelectorAll('[data-irie-section-label]').forEach((node) => {
+    node.removeAttribute('data-irie-section-label')
+  })
+}
+
+/**
+ * Serialize the live iframe document into a persistable HTML string. Keeps
+ * data-irie-section-id / data-irie-edit-id / data-irie-image-id / data-irie-editable
+ * annotations so next load can re-hydrate without having to re-annotate. Also
+ * refreshes the baked CSS from the current TunerState.
+ *
+ * Strips editor chrome (selection rings, contenteditable, hover attributes)
+ * so the persisted HTML is viewable as-is.
+ */
+export function serializeIframe(
+  doc: Document,
+  state: TunerState,
+  getDials: (sectionId: string) => DialGroup | null,
+): string {
+  // Work on a clone so the live iframe keeps its chrome for further edits.
+  const cloneDoc = doc.cloneNode(true) as Document
+  stripEditorChrome(cloneDoc)
+
+  // Refresh the baked rules from state so refresh re-hydrates with no JS.
+  cloneDoc.querySelectorAll(`#${TUNER_BAKED_STYLE_ID}`).forEach((node) => node.remove())
+  const bakedParts: string[] = []
+  for (const [sectionId, values] of Object.entries(state)) {
+    const group = getDials(sectionId)
+    if (!group) continue
+    const block = serializeSection(sectionId, values, group)
+    if (block) bakedParts.push(block)
+  }
+  if (bakedParts.length > 0) {
+    const baked = cloneDoc.createElement('style')
+    baked.id = TUNER_BAKED_STYLE_ID
+    baked.textContent = bakedParts.join('\n\n')
+    cloneDoc.head.appendChild(baked)
+  }
+
+  // Ensure runtime CSS is present (it may have been stripped in a prior
+  // hard-reset flow). The annotator reinstalls it on load, but baked HTML
+  // must carry it for server-rendered refresh to keep parity.
+  if (!cloneDoc.getElementById(TUNER_RUNTIME_STYLE_ID)) {
+    const runtime = cloneDoc.createElement('style')
+    runtime.id = TUNER_RUNTIME_STYLE_ID
+    runtime.textContent = tunerRuntimeCss()
+    cloneDoc.head.appendChild(runtime)
+  }
+
+  return `<!DOCTYPE html>\n${cloneDoc.documentElement.outerHTML}`
+}
+
+/**
+ * Export-ready HTML: strips ALL data-irie-* annotations (not just chrome).
+ * Used by Download / Copy Code / Publish — the HTML that leaves the editor.
+ */
+export function serializeForExport(
+  doc: Document,
+  state: TunerState,
+  getDials: (sectionId: string) => DialGroup | null,
+): string {
+  const full = serializeIframe(doc, state, getDials)
+  // Second pass: strip ids used only by the editor.
+  const parser = new DOMParser()
+  const parsed = parser.parseFromString(full, 'text/html')
+  parsed
+    .querySelectorAll(
+      '[data-irie-edit-id], [data-irie-editable], [data-irie-image-id], [data-irie-section-id], [data-irie-section-label]',
+    )
+    .forEach((node) => {
+      node.removeAttribute('data-irie-edit-id')
+      node.removeAttribute('data-irie-editable')
+      node.removeAttribute('data-irie-image-id')
+      node.removeAttribute('data-irie-section-id')
+      node.removeAttribute('data-irie-section-label')
+    })
+  return `<!DOCTYPE html>\n${parsed.documentElement.outerHTML}`
 }

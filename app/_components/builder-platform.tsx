@@ -2695,7 +2695,7 @@ export function GeneratePage() {
   )
 }
 
-function SliderField({
+export function SliderField({
   label,
   value,
   unit,

@@ -35,7 +35,6 @@ export function TunerMobileDrawer({
               aria-selected={activeId === section.sectionId}
               className={activeId === section.sectionId ? 'is-active' : ''}
               onClick={() => onSelect(section.sectionId)}
-              data-hover="interactive"
             >
               {section.label}
             </button>
@@ -46,9 +45,7 @@ export function TunerMobileDrawer({
           onClick={onToggle}
           aria-expanded={isOpen}
           aria-label={isOpen ? 'Close dials' : 'Open dials'}
-          className="tuner-button is-ghost"
-          style={{ minHeight: 44 }}
-          data-hover="interactive"
+          className="tuner-btn"
         >
           {isOpen ? 'Close' : 'Tune'}
         </button>
