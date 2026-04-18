@@ -13,16 +13,16 @@
    ───────────────────────────────────────────────────────────────────────── */
 
 .tuner-root {
-  /* Tool tokens */
-  --tool-bg: #0a0a0a;
+  /* Tool tokens — canvas matches /brief (#080808). Text lifted to cream for readability. */
+  --tool-bg: #080808;
   --tool-bg-raised: #111111;
-  --tool-bg-hover: #161616;
-  --tool-bg-active: #1c1c1c;
-  --tool-border: rgba(255, 255, 255, 0.06);
-  --tool-border-strong: rgba(255, 255, 255, 0.1);
-  --tool-text: #e5e5e5;
-  --tool-text-secondary: #a3a3a3;
-  --tool-text-muted: #737373;
+  --tool-bg-hover: #181615;
+  --tool-bg-active: #211e1a;
+  --tool-border: rgba(255, 255, 255, 0.08);
+  --tool-border-strong: rgba(255, 255, 255, 0.14);
+  --tool-text: #f2ede4;
+  --tool-text-secondary: rgba(242, 237, 228, 0.72);
+  --tool-text-muted: rgba(242, 237, 228, 0.48);
   --tool-gold: #c9a84c;
   --tool-gold-soft: rgba(201, 168, 76, 0.18);
   --tool-gold-wash: rgba(201, 168, 76, 0.06);
@@ -578,7 +578,7 @@
   border: 1px solid var(--tool-border-strong);
   border-radius: 4px;
   overflow: hidden;
-  background: #fff;
+  background: var(--tool-bg);
   transition: width 220ms ease;
   position: relative;
 }
@@ -588,7 +588,7 @@
   height: calc(100vh - 40px - 20px - 24px);
   min-height: 600px;
   border: 0;
-  background: #fff;
+  background: var(--tool-bg);
 }
 
 /* ───── Right panel ────────────────────────────────────────────────────── */
